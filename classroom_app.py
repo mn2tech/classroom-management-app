@@ -227,6 +227,26 @@ def get_parent_emails():
     conn.close()
     return emails
 
+def test_email_connection():
+    """Test email connection without sending"""
+    try:
+        config = get_email_config()
+        
+        if not config['sender_email'] or not config['sender_password']:
+            return False, "Email configuration not set"
+        
+        # Test SMTP connection
+        server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
+        if config['use_tls']:
+            server.starttls()
+        server.login(config['sender_email'], config['sender_password'])
+        server.quit()
+        
+        return True, "Email connection test successful!"
+        
+    except Exception as e:
+        return False, f"Email connection test failed: {str(e)}"
+
 # Authentication
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
     conn = sqlite3.connect('classroom.db')
@@ -1000,6 +1020,13 @@ def newsletter_management():
                 
                 # Email configuration section
                 with st.expander("⚙️ Email Configuration", expanded=True):
+                    st.info("""
+                    **📧 Email Sending on Streamlit Cloud:**
+                    - Some SMTP providers may block connections from cloud platforms
+                    - Gmail with App Password usually works best
+                    - If email fails, try using a different email provider
+                    - Consider using a dedicated email service like SendGrid for production
+                    """)
                     config = get_email_config()
                     
                     col1, col2 = st.columns(2)
@@ -1028,6 +1055,15 @@ def newsletter_management():
                         )
                     
                     st.session_state.email_config = config
+                
+                # Test email connection
+                if st.button("🔧 Test Email Connection", key=f"test_connection_{newsletter[0]}"):
+                    with st.spinner("Testing email connection..."):
+                        success, message = test_email_connection()
+                        if success:
+                            st.success(message)
+                        else:
+                            st.error(message)
                 
                 # Get parent emails
                 parent_emails = get_parent_emails()
