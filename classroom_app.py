@@ -222,7 +222,7 @@ def get_parent_emails():
     """Get all parent email addresses from the database"""
     conn = sqlite3.connect('classroom.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT email FROM users WHERE role = "Parent" AND email IS NOT NULL AND email != ""')
+    cursor.execute('SELECT email FROM users WHERE role = "parent" AND email IS NOT NULL AND email != ""')
     emails = [row[0] for row in cursor.fetchall()]
     conn.close()
     return emails
@@ -1056,6 +1056,13 @@ def newsletter_management():
                     
                     st.session_state.email_config = config
                 
+                # Show current configuration
+                st.write("**Current Email Configuration:**")
+                st.write(f"- Sender Email: {config['sender_email'] or 'Not set'}")
+                st.write(f"- SMTP Server: {config['smtp_server']}")
+                st.write(f"- SMTP Port: {config['smtp_port']}")
+                st.write(f"- Password: {'Set' if config['sender_password'] else 'Not set'}")
+                
                 # Test email connection
                 if st.button("🔧 Test Email Connection", key=f"test_connection_{newsletter[0]}"):
                     with st.spinner("Testing email connection..."):
@@ -1070,6 +1077,29 @@ def newsletter_management():
                 
                 if not parent_emails:
                     st.warning("⚠️ No parent email addresses found. Please add parent users with email addresses first.")
+                    
+                    # Add button to create sample parent users
+                    if st.button("👥 Create Sample Parent Users", key=f"create_parents_{newsletter[0]}"):
+                        conn = sqlite3.connect('classroom.db')
+                        cursor = conn.cursor()
+                        
+                        # Create sample parents
+                        parents = [
+                            ('parent1', 'password123', 'parent', 'parent1@email.com', '555-0001'),
+                            ('parent2', 'password123', 'parent', 'parent2@email.com', '555-0002'),
+                            ('parent3', 'password123', 'parent', 'parent3@email.com', '555-0003')
+                        ]
+                        
+                        for username, password, role, email, phone in parents:
+                            cursor.execute('''
+                                INSERT OR IGNORE INTO users (id, username, password, role, email, phone)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (str(uuid.uuid4()), username, password, role, email, phone))
+                        
+                        conn.commit()
+                        conn.close()
+                        st.success("Sample parent users created! Please refresh the page.")
+                        st.rerun()
                 else:
                     st.success(f"📧 Found {len(parent_emails)} parent email addresses")
                     
