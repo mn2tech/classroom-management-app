@@ -11,6 +11,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from io import BytesIO
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 # Page configuration
 st.set_page_config(
@@ -113,6 +118,87 @@ def init_database():
 
 # Initialize database
 init_database()
+
+# Email configuration and functions
+def get_email_config():
+    """Get email configuration from session state or return defaults"""
+    if 'email_config' not in st.session_state:
+        st.session_state.email_config = {
+            'smtp_server': 'smtp.gmail.com',
+            'smtp_port': 587,
+            'sender_email': '',
+            'sender_password': '',
+            'use_tls': True
+        }
+    return st.session_state.email_config
+
+def send_newsletter_email(newsletter_data, recipient_emails, pdf_data=None):
+    """Send newsletter email to recipients"""
+    try:
+        config = get_email_config()
+        
+        if not config['sender_email'] or not config['sender_password']:
+            return False, "Email configuration not set. Please configure email settings first."
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = config['sender_email']
+        msg['Subject'] = f"Classroom Newsletter: {newsletter_data['title']}"
+        
+        # Email body
+        body = f"""
+Dear Parents and Students,
+
+Please find attached the latest classroom newsletter from Mrs. Simms' 2nd Grade Class.
+
+Newsletter: {newsletter_data['title']}
+Date: {newsletter_data['date']}
+
+{newsletter_data['content']}
+
+Best regards,
+Mrs. Simms
+Washington Christian Academy
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Attach PDF if provided
+        if pdf_data:
+            attachment = MIMEBase('application', 'octet-stream')
+            attachment.set_payload(pdf_data)
+            encoders.encode_base64(attachment)
+            attachment.add_header(
+                'Content-Disposition',
+                f'attachment; filename= "newsletter_{newsletter_data["date"]}.pdf"'
+            )
+            msg.attach(attachment)
+        
+        # Send email to all recipients
+        server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
+        if config['use_tls']:
+            server.starttls()
+        server.login(config['sender_email'], config['sender_password'])
+        
+        for recipient in recipient_emails:
+            msg['To'] = recipient
+            server.send_message(msg)
+            del msg['To']  # Remove To field for next recipient
+        
+        server.quit()
+        return True, f"Newsletter sent successfully to {len(recipient_emails)} recipients!"
+        
+    except Exception as e:
+        return False, f"Error sending email: {str(e)}"
+
+def get_parent_emails():
+    """Get all parent email addresses from the database"""
+    conn = sqlite3.connect('classroom.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT email FROM users WHERE role = "Parent" AND email IS NOT NULL AND email != ""')
+    emails = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return emails
 
 # Authentication
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
@@ -736,7 +822,7 @@ def newsletter_management():
             content = json.loads(newsletter[2])
             
             # Action buttons
-            col1, col2, col3 = st.columns([3, 1, 1])
+            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
             with col2:
                 if st.button("📥 Download PDF", key=f"download_{newsletter[0]}", type="primary"):
                     try:
@@ -751,6 +837,9 @@ def newsletter_management():
                     except Exception as e:
                         st.error(f"Error generating PDF: {str(e)}")
             with col3:
+                if st.button("📧 Send Email", key=f"email_{newsletter[0]}", type="secondary"):
+                    st.session_state[f"show_email_dialog_{newsletter[0]}"] = True
+            with col4:
                 if st.button("🗑️ Delete", key=f"delete_{newsletter[0]}", type="secondary"):
                     st.session_state[f'confirm_delete_{newsletter[0]}'] = True
                     st.write(f"Debug: Delete button clicked for newsletter {newsletter[0]} - {newsletter[1]}")
@@ -876,6 +965,95 @@ def newsletter_management():
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
+            
+            # Email dialog for this newsletter
+            if st.session_state.get(f"show_email_dialog_{newsletter[0]}", False):
+                st.markdown("---")
+                st.subheader("📧 Send Newsletter via Email")
+                
+                # Email configuration section
+                with st.expander("⚙️ Email Configuration", expanded=True):
+                    config = get_email_config()
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        config['sender_email'] = st.text_input(
+                            "Sender Email", 
+                            value=config['sender_email'],
+                            help="Your email address (e.g., mrs.simms@school.edu)"
+                        )
+                        config['smtp_server'] = st.text_input(
+                            "SMTP Server", 
+                            value=config['smtp_server'],
+                            help="Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com"
+                        )
+                    with col2:
+                        config['sender_password'] = st.text_input(
+                            "Email Password", 
+                            value=config['sender_password'],
+                            type="password",
+                            help="Use App Password for Gmail (not your regular password)"
+                        )
+                        config['smtp_port'] = st.number_input(
+                            "SMTP Port", 
+                            value=config['smtp_port'],
+                            help="Gmail: 587, Outlook: 587"
+                        )
+                    
+                    st.session_state.email_config = config
+                
+                # Get parent emails
+                parent_emails = get_parent_emails()
+                
+                if not parent_emails:
+                    st.warning("⚠️ No parent email addresses found. Please add parent users with email addresses first.")
+                else:
+                    st.success(f"📧 Found {len(parent_emails)} parent email addresses")
+                    
+                    # Show recipient list
+                    with st.expander("👥 Recipients", expanded=True):
+                        for email in parent_emails:
+                            st.write(f"• {email}")
+                    
+                    # Send email options
+                    col1, col2, col3 = st.columns([1, 1, 1])
+                    
+                    with col1:
+                        if st.button("📧 Send Email", key=f"send_email_{newsletter[0]}", type="primary"):
+                            if not config['sender_email'] or not config['sender_password']:
+                                st.error("Please configure email settings first!")
+                            else:
+                                with st.spinner("Sending email..."):
+                                    # Generate PDF for attachment
+                                    try:
+                                        pdf_data = generate_newsletter_pdf(content)
+                                        success, message = send_newsletter_email(content, parent_emails, pdf_data)
+                                    except Exception as e:
+                                        success, message = send_newsletter_email(content, parent_emails, None)
+                                    
+                                    if success:
+                                        st.success(message)
+                                    else:
+                                        st.error(message)
+                    
+                    with col2:
+                        if st.button("📧 Send Text Only", key=f"send_text_{newsletter[0]}"):
+                            if not config['sender_email'] or not config['sender_password']:
+                                st.error("Please configure email settings first!")
+                            else:
+                                with st.spinner("Sending email..."):
+                                    success, message = send_newsletter_email(content, parent_emails, None)
+                                    if success:
+                                        st.success(message)
+                                    else:
+                                        st.error(message)
+                    
+                    with col3:
+                        if st.button("❌ Cancel", key=f"cancel_email_{newsletter[0]}"):
+                            st.session_state[f"show_email_dialog_{newsletter[0]}"] = False
+                            st.rerun()
+                
+                st.markdown("---")
 
 def event_management():
     st.subheader("📅 Event Management")
