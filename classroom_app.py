@@ -1031,29 +1031,38 @@ def newsletter_management():
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        config['sender_email'] = st.text_input(
+                        sender_email = st.text_input(
                             "Sender Email", 
                             value=config['sender_email'],
-                            help="Your email address (e.g., mrs.simms@school.edu)"
+                            help="Your email address (e.g., mrs.simms@school.edu)",
+                            key=f"sender_email_{newsletter[0]}"
                         )
-                        config['smtp_server'] = st.text_input(
+                        smtp_server = st.text_input(
                             "SMTP Server", 
                             value=config['smtp_server'],
-                            help="Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com"
+                            help="Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com",
+                            key=f"smtp_server_{newsletter[0]}"
                         )
                     with col2:
-                        config['sender_password'] = st.text_input(
+                        sender_password = st.text_input(
                             "Email Password", 
                             value=config['sender_password'],
                             type="password",
-                            help="Use App Password for Gmail (not your regular password)"
+                            help="Use App Password for Gmail (not your regular password)",
+                            key=f"sender_password_{newsletter[0]}"
                         )
-                        config['smtp_port'] = st.number_input(
+                        smtp_port = st.number_input(
                             "SMTP Port", 
                             value=config['smtp_port'],
-                            help="Gmail: 587, Outlook: 587"
+                            help="Gmail: 587, Outlook: 587",
+                            key=f"smtp_port_{newsletter[0]}"
                         )
                     
+                    # Update config with new values
+                    config['sender_email'] = sender_email
+                    config['smtp_server'] = smtp_server
+                    config['sender_password'] = sender_password
+                    config['smtp_port'] = int(smtp_port)
                     st.session_state.email_config = config
                 
                 # Show current configuration
@@ -1062,6 +1071,11 @@ def newsletter_management():
                 st.write(f"- SMTP Server: {config['smtp_server']}")
                 st.write(f"- SMTP Port: {config['smtp_port']}")
                 st.write(f"- Password: {'Set' if config['sender_password'] else 'Not set'}")
+                
+                # Debug: Show raw config
+                if st.checkbox("Show Debug Info", key=f"debug_config_{newsletter[0]}"):
+                    st.write("**Debug - Raw Config:**")
+                    st.write(config)
                 
                 # Test email connection
                 if st.button("🔧 Test Email Connection", key=f"test_connection_{newsletter[0]}"):
