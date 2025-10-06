@@ -140,12 +140,31 @@ def send_newsletter_email(newsletter_data, recipient_emails, pdf_data=None):
         if not config['sender_email'] or not config['sender_password']:
             return False, "Email configuration not set. Please configure email settings first."
         
+        if not recipient_emails:
+            return False, "No recipient email addresses found. Please add parent users with email addresses."
+        
+        # Debug info
+        st.write(f"Debug: Sending to {len(recipient_emails)} recipients")
+        st.write(f"Debug: Using SMTP server: {config['smtp_server']}:{config['smtp_port']}")
+        st.write(f"Debug: Sender email: {config['sender_email']}")
+        
         # Create message
         msg = MIMEMultipart()
         msg['From'] = config['sender_email']
         msg['Subject'] = f"Classroom Newsletter: {newsletter_data['title']}"
         
         # Email body
+        # Format newsletter content properly
+        content_text = ""
+        if 'left_column' in newsletter_data:
+            content_text += "UPCOMING EVENTS:\n" + newsletter_data['left_column'].get('upcoming_events', '') + "\n\n"
+            content_text += "LEARNING SNAPSHOT:\n" + newsletter_data['left_column'].get('learning_snapshot', '') + "\n\n"
+            content_text += "IMPORTANT NEWS:\n" + newsletter_data['left_column'].get('important_news', '') + "\n\n"
+        if 'right_column' in newsletter_data:
+            content_text += "WORD LIST:\n" + newsletter_data['right_column'].get('word_list', '') + "\n\n"
+            content_text += "PRACTICE AT HOME:\n" + newsletter_data['right_column'].get('practice_home', '') + "\n\n"
+            content_text += "MEMORY VERSE:\n" + newsletter_data['right_column'].get('memory_verse', '') + "\n\n"
+        
         body = f"""
 Dear Parents and Students,
 
@@ -154,7 +173,7 @@ Please find attached the latest classroom newsletter from Mrs. Simms' 2nd Grade 
 Newsletter: {newsletter_data['title']}
 Date: {newsletter_data['date']}
 
-{newsletter_data['content']}
+{content_text}
 
 Best regards,
 Mrs. Simms
@@ -175,17 +194,25 @@ Washington Christian Academy
             msg.attach(attachment)
         
         # Send email to all recipients
+        st.write("Debug: Connecting to SMTP server...")
         server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
-        if config['use_tls']:
-            server.starttls()
-        server.login(config['sender_email'], config['sender_password'])
         
-        for recipient in recipient_emails:
+        if config['use_tls']:
+            st.write("Debug: Starting TLS...")
+            server.starttls()
+        
+        st.write("Debug: Logging in...")
+        server.login(config['sender_email'], config['sender_password'])
+        st.write("Debug: Login successful!")
+        
+        for i, recipient in enumerate(recipient_emails):
+            st.write(f"Debug: Sending to recipient {i+1}/{len(recipient_emails)}: {recipient}")
             msg['To'] = recipient
             server.send_message(msg)
             del msg['To']  # Remove To field for next recipient
         
         server.quit()
+        st.write("Debug: Email sending completed!")
         return True, f"Newsletter sent successfully to {len(recipient_emails)} recipients!"
         
     except Exception as e:
