@@ -1,0 +1,61 @@
+Subject: Parent Login Credentials - Classroom Management App
+
+Hello Mrs. Simms,
+
+Good evening! I'm so glad the Principal approved the newsletter app! Here are the parent login credentials:
+
+APP URL:
+https://classroom-management-app-wca.streamlit.app
+
+PARENT LOGIN CREDENTIALS (Test Accounts):
+Currently, there are 3 test parent accounts set up. You can use these for testing:
+
+Account 1:
+- Username: parent1
+- Password: password123
+- Email: parent1@email.com
+
+Account 2:
+- Username: parent2
+- Password: password123
+- Email: parent2@email.com
+
+Account 3:
+- Username: parent3
+- Password: password123
+- Email: parent3@email.com
+
+YOUR TEACHER LOGIN:
+- Username: mrs.simms
+- Password: password123
+
+HOW TO SEND NEWSLETTERS TO PARENTS:
+1. Log in as teacher (mrs.simms / password123)
+2. Go to "Newsletter Management"
+3. Click "📧 Send Email" on any newsletter
+4. Enter your email configuration
+5. Click "📧 Send Email" - it will send to all parents with email addresses
+
+ADDING REAL PARENT ACCOUNTS:
+For your actual class parents, I can help you add them. We'll need:
+- Parent name
+- Parent email address
+- Parent phone number (optional)
+- Student name (to link parent to child)
+
+Would you like me to:
+1. Create individual accounts for each of your class parents?
+2. Or would you prefer a self-registration system where parents can sign up themselves?
+
+Please let me know which option works best, and I'll set that up for you!
+
+For now, you can use the test accounts (parent1, parent2, parent3) to:
+- Test the newsletter email functionality
+- Show parents how the app works
+- Practice sending newsletters
+
+If you have any questions or need help, just let me know!
+
+Best regards,
+Mr. Kola
+NM2TECH LLC

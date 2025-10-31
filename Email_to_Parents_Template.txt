@@ -1,0 +1,33 @@
+Subject: Classroom Management App - Login Instructions
+
+Dear Parents,
+
+I'm excited to share that we now have a Classroom Management App to help us stay connected!
+
+You can access the app at: https://classroom-management-app-wca.streamlit.app
+
+LOGIN CREDENTIALS:
+- Username: [parent username]
+- Password: [parent password]
+
+Once logged in, you will be able to:
+✅ View classroom newsletters
+✅ See your child's progress and assignments
+✅ RSVP to classroom events
+✅ Download PDF newsletters
+✅ Stay updated with important announcements
+
+If you have any questions or need help accessing the app, please don't hesitate to reach out.
+
+Thank you!
+
+Best regards,
+Mrs. Simms
+Washington Christian Academy
+
+---
+
+Note to Mrs. Simms: 
+- Replace [parent username] and [parent password] with each parent's credentials
+- You may want to send individual emails with each parent's unique credentials
+- Or use a password that parents can change after first login
