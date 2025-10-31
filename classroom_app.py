@@ -264,6 +264,12 @@ def create_default_users():
     count = cursor.fetchone()[0]
     
     if count == 0:
+        # Create admin account
+        cursor.execute('''
+            INSERT INTO users (id, username, password, role, email, phone)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (str(uuid.uuid4()), 'admin', 'admin123', 'admin', 'admin@nm2tech.com', ''))
+        
         # Create default teacher
         cursor.execute('''
             INSERT INTO users (id, username, password, role, email, phone)
@@ -547,9 +553,10 @@ def main():
                 st.sidebar.info(f"Debug: Username='{username}', Password='{password}'")
         
         st.sidebar.markdown("---")
-        st.sidebar.markdown("**Demo Credentials:**")
-        st.sidebar.markdown("Teacher: mrs.simms / password123")
-        st.sidebar.markdown("Parent: parent1 / password123")
+        st.sidebar.markdown("**Login Credentials:**")
+        st.sidebar.markdown("**Admin:** admin / admin123")
+        st.sidebar.markdown("**Teacher:** mrs.simms / password123")
+        st.sidebar.markdown("**Parent:** parent1 / password123")
         
         # Debug: Show available users
         with st.sidebar.expander("🔍 Debug: Available Users"):
@@ -610,13 +617,54 @@ def main():
     """, unsafe_allow_html=True)
     
     # Main content based on user role
-    if user['role'] == 'teacher':
+    if user['role'] == 'admin':
+        admin_dashboard()
+    elif user['role'] == 'teacher':
         teacher_dashboard()
     elif user['role'] == 'parent':
         parent_dashboard()
     else:
         st.error(f"Invalid user role: {user['role']}")
         st.write(f"Debug info: {user}")
+
+def admin_dashboard():
+    st.header("👑 Admin Dashboard")
+    st.markdown("**Full System Management - Manage Teachers, Parents, and Everything**")
+    
+    # Navigation tabs
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "⚙️ Settings"
+    ])
+    
+    with tab1:
+        admin_user_management()
+    
+    with tab2:
+        admin_teacher_management()
+    
+    with tab3:
+        parent_user_management()  # Reuse the parent management function
+    
+    with tab4:
+        newsletter_management()  # Reuse newsletter management
+    
+    with tab5:
+        admin_system_info()
+    
+    with tab6:
+        admin_settings()
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 8px; margin-top: 30px;">
+        <p style="color: #6c757d; font-size: 0.9em; margin: 0;">
+            <strong>Designed by</strong> 
+            <a href="https://www.nm2tech.com" target="_blank" style="color: #007bff; font-weight: bold; text-decoration: none;">NM2TECH LLC</a> 
+            - Technology Simplified
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 def teacher_dashboard():
     st.header("👩‍🏫 Teacher Dashboard")
@@ -1307,6 +1355,276 @@ def parent_user_management():
             
             st.text_area("Copy these credentials:", credentials_text, height=300, key="credentials_export")
             st.info("💡 Copy the text above and share it with parents via email or print.")
+
+def admin_user_management():
+    st.subheader("👥 Complete User Management")
+    st.markdown("**View and manage ALL users in the system (Admins, Teachers, Parents)**")
+    
+    # View all users
+    conn = sqlite3.connect('classroom.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, username, role, email, phone, created_at 
+        FROM users 
+        ORDER BY role, created_at DESC
+    ''')
+    all_users = cursor.fetchall()
+    conn.close()
+    
+    if not all_users:
+        st.info("No users found in the system.")
+    else:
+        # Group by role
+        roles = {'admin': [], 'teacher': [], 'parent': []}
+        for user in all_users:
+            role = user[2]
+            if role in roles:
+                roles[role].append(user)
+        
+        st.success(f"Total Users: {len(all_users)} (Admin: {len(roles['admin'])}, Teachers: {len(roles['teacher'])}, Parents: {len(roles['parent'])})")
+        
+        # Display users by role
+        for role_name, role_display in [('admin', '👑 Admins'), ('teacher', '👩‍🏫 Teachers'), ('parent', '👨‍👩‍👧‍👦 Parents')]:
+            if roles[role_name]:
+                st.markdown(f"### {role_display} ({len(roles[role_name])})")
+                for user in roles[role_name]:
+                    user_id, username, role, email, phone, created_at = user
+                    with st.expander(f"{username} ({role}) - {email or 'No email'}", expanded=False):
+                        col1, col2, col3 = st.columns([2, 1, 1])
+                        
+                        with col1:
+                            st.markdown(f"""
+                            **Username:** `{username}`  
+                            **Role:** {role}  
+                            **Email:** {email or 'Not provided'}  
+                            **Phone:** {phone or 'Not provided'}  
+                            **Created:** {created_at[:10] if created_at else 'N/A'}
+                            """)
+                        
+                        with col2:
+                            if st.button("📋 Show Credentials", key=f"admin_show_creds_{user_id}"):
+                                conn = sqlite3.connect('classroom.db')
+                                cursor = conn.cursor()
+                                cursor.execute('SELECT password FROM users WHERE id = ?', (user_id,))
+                                password_result = cursor.fetchone()
+                                password = password_result[0] if password_result else "Not found"
+                                conn.close()
+                                
+                                st.info(f"""
+                                **Login Credentials:**
+                                - Username: `{username}`
+                                - Password: `{password}`
+                                - Role: {role}
+                                - App: https://classroom-management-app-wca.streamlit.app
+                                """)
+                        
+                        with col3:
+                            if user_id != st.session_state.user.get('id'):  # Can't delete yourself
+                                if st.button("🗑️ Delete", key=f"admin_delete_{user_id}", type="secondary"):
+                                    if st.session_state.get(f"admin_confirm_delete_{user_id}", False):
+                                        conn = sqlite3.connect('classroom.db')
+                                        cursor = conn.cursor()
+                                        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+                                        conn.commit()
+                                        conn.close()
+                                        st.success(f"User {username} deleted successfully!")
+                                        st.rerun()
+                                    else:
+                                        st.session_state[f"admin_confirm_delete_{user_id}"] = True
+                                        st.warning(f"⚠️ Delete '{username}'? This cannot be undone!")
+                                        if st.button("✅ Yes, Delete", key=f"admin_confirm_yes_{user_id}"):
+                                            conn = sqlite3.connect('classroom.db')
+                                            cursor = conn.cursor()
+                                            cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+                                            conn.commit()
+                                            conn.close()
+                                            st.success("User deleted!")
+                                            st.rerun()
+
+def admin_teacher_management():
+    st.subheader("👩‍🏫 Teacher Account Management")
+    st.markdown("**Create and manage teacher accounts**")
+    
+    # Create new teacher account
+    with st.expander("➕ Add New Teacher Account", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            teacher_username = st.text_input(
+                "Teacher Username",
+                help="Choose a unique username (e.g., 'mrs.simms', 'mr.jones')",
+                key="new_teacher_username"
+            )
+            teacher_email = st.text_input(
+                "Email Address",
+                help="Teacher's school email address",
+                key="new_teacher_email"
+            )
+            teacher_password = st.text_input(
+                "Password",
+                type="password",
+                help="Create a secure password",
+                key="new_teacher_password"
+            )
+        
+        with col2:
+            teacher_name = st.text_input(
+                "Teacher Name",
+                help="Full name (e.g., 'Mrs. Simms')",
+                key="new_teacher_name"
+            )
+            teacher_phone = st.text_input(
+                "Phone Number",
+                help="Contact phone number",
+                key="new_teacher_phone"
+            )
+        
+        if st.button("➕ Create Teacher Account", type="primary", key="create_teacher_btn"):
+            if not teacher_username or not teacher_password or not teacher_email:
+                st.error("Please fill in at least Username, Password, and Email address.")
+            else:
+                conn = sqlite3.connect('classroom.db')
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT * FROM users WHERE username = ?', (teacher_username,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    st.error(f"Username '{teacher_username}' already exists.")
+                else:
+                    teacher_id = str(uuid.uuid4())
+                    cursor.execute('''
+                        INSERT INTO users (id, username, password, role, email, phone)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (teacher_id, teacher_username, teacher_password, 'teacher', teacher_email, teacher_phone or ''))
+                    
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Teacher account created successfully!")
+                    st.info(f"""
+                    **Login Credentials:**
+                    - Username: `{teacher_username}`
+                    - Password: `{teacher_password}`
+                    - Email: {teacher_email}
+                    - Role: Teacher
+                    - App: https://classroom-management-app-wca.streamlit.app
+                    """)
+                    st.rerun()
+    
+    # View existing teachers
+    st.subheader("📋 Existing Teacher Accounts")
+    
+    conn = sqlite3.connect('classroom.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, username, email, phone, created_at 
+        FROM users 
+        WHERE role = "teacher" 
+        ORDER BY created_at DESC
+    ''')
+    teachers = cursor.fetchall()
+    conn.close()
+    
+    if not teachers:
+        st.info("No teacher accounts created yet.")
+    else:
+        st.success(f"Found {len(teachers)} teacher account(s)")
+        
+        for teacher in teachers:
+            teacher_id, username, email, phone, created_at = teacher
+            with st.expander(f"👩‍🏫 {username} - {email or 'No email'}", expanded=False):
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.markdown(f"""
+                    **Username:** `{username}`  
+                    **Email:** {email or 'Not provided'}  
+                    **Phone:** {phone or 'Not provided'}  
+                    **Created:** {created_at[:10] if created_at else 'N/A'}
+                    """)
+                
+                with col2:
+                    if st.button("📋 Show Credentials", key=f"teacher_show_{teacher_id}"):
+                        conn = sqlite3.connect('classroom.db')
+                        cursor = conn.cursor()
+                        cursor.execute('SELECT password FROM users WHERE id = ?', (teacher_id,))
+                        password_result = cursor.fetchone()
+                        password = password_result[0] if password_result else "Not found"
+                        conn.close()
+                        
+                        st.info(f"""
+                        **Login Credentials:**
+                        - Username: `{username}`
+                        - Password: `{password}`
+                        - App: https://classroom-management-app-wca.streamlit.app
+                        """)
+
+def admin_system_info():
+    st.subheader("📊 System Information & Statistics")
+    
+    conn = sqlite3.connect('classroom.db')
+    cursor = conn.cursor()
+    
+    # User statistics
+    st.markdown("### 👥 User Statistics")
+    cursor.execute('SELECT role, COUNT(*) FROM users GROUP BY role')
+    role_counts = cursor.fetchall()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    admin_count = next((count for role, count in role_counts if role == 'admin'), 0)
+    teacher_count = next((count for role, count in role_counts if role == 'teacher'), 0)
+    parent_count = next((count for role, count in role_counts if role == 'parent'), 0)
+    total_users = admin_count + teacher_count + parent_count
+    
+    with col1:
+        st.metric("Total Users", total_users)
+    with col2:
+        st.metric("Admins", admin_count)
+    with col3:
+        st.metric("Teachers", teacher_count)
+    with col4:
+        st.metric("Parents", parent_count)
+    
+    # Content statistics
+    st.markdown("### 📚 Content Statistics")
+    cursor.execute('SELECT COUNT(*) FROM newsletters')
+    newsletter_count = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM events')
+    event_count = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM assignments')
+    assignment_count = cursor.fetchone()[0]
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Newsletters", newsletter_count)
+    with col2:
+        st.metric("Events", event_count)
+    with col3:
+        st.metric("Assignments", assignment_count)
+    
+    conn.close()
+    
+    # System details
+    st.markdown("### ⚙️ System Details")
+    st.info(f"""
+    **App Version:** 1.0  
+    **Database:** SQLite (classroom.db)  
+    **Platform:** Streamlit Cloud  
+    **App URL:** https://classroom-management-app-wca.streamlit.app
+    """)
+
+def admin_settings():
+    st.subheader("⚙️ System Settings")
+    st.info("System settings and configuration options will be available here.")
+    st.markdown("""
+    **Future Settings:**
+    - System maintenance mode
+    - Email notifications
+    - Password reset policies
+    - Data backup/export
+    - System logs
+    """)
 
 def reports_dashboard():
     st.subheader("📊 Reports Dashboard")
