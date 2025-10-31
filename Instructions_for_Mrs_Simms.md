@@ -44,6 +44,17 @@ Simply click the link above or copy and paste it into your web browser.
 - **Generate Reports**: Create PDF reports of student information
 - **Export Data**: Download student lists and other data as PDFs
 
+### **4. Sharing with Parents**
+- **Send App Link**: Share the app link and login credentials with parents
+- **Parents Access**: Parents log in to view newsletters, their child's progress, and events
+- **No Email Needed**: Parents can check the app anytime - no need to send emails!
+
+**To Share with Parents:**
+1. Get parent login credentials from your support contact
+2. Send parents the app link: https://classroom-management-app-wca.streamlit.app
+3. Include their username and password
+4. Parents can now log in and view everything!
+
 ---
 
 ## 💡 **Quick Tips**

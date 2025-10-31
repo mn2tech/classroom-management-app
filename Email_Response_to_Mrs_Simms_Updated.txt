@@ -1,0 +1,70 @@
+Subject: Classroom Management App - Parent Login Instructions
+
+Hello Mrs. Simms,
+
+Good evening! I'm so glad the Principal approved the newsletter app! Here's how parents can access it:
+
+📱 APP ACCESS LINK:
+https://classroom-management-app-wca.streamlit.app
+
+👥 HOW PARENTS CAN ACCESS THE APP:
+
+Simply send parents this message (see template below) with their login credentials. Parents can then:
+1. Click the link above
+2. Login with their username and password
+3. View newsletters, their child's progress, events, and assignments
+4. Download PDF newsletters
+5. RSVP to events
+
+🔐 YOUR TEACHER LOGIN:
+- Username: mrs.simms
+- Password: password123
+
+📧 TEMPLATE MESSAGE TO SEND TO PARENTS:
+
+"Dear Parents,
+
+I'm excited to share our new Classroom Management App! You can now easily access:
+- Weekly newsletters
+- Your child's progress and assignments
+- Upcoming events and RSVPs
+- Important announcements
+
+To access the app:
+1. Go to: https://classroom-management-app-wca.streamlit.app
+2. Login with your credentials:
+   - Username: [parent username]
+   - Password: [parent password]
+
+If you have any questions, please don't hesitate to reach out!
+
+Best regards,
+Mrs. Simms"
+
+📋 CURRENT TEST ACCOUNTS:
+For now, you have 3 test parent accounts you can share for testing:
+- Username: parent1 / Password: password123
+- Username: parent2 / Password: password123  
+- Username: parent3 / Password: password123
+
+✨ ADDING REAL PARENT ACCOUNTS:
+To add your actual class parents, I'll need:
+- Parent's full name
+- Parent's email address
+- Phone number (optional)
+- Student name (to link parent to child)
+
+I can create individual accounts for each parent, or we can set up a self-registration system. Let me know which you prefer!
+
+📚 NEWSletters:
+Once parents log in, they can:
+- View all newsletters you've created
+- Download PDF versions
+- See newsletters anytime they want
+- No need to send emails - they just check the app!
+
+If you have any questions or need help, just let me know!
+
+Best regards,
+Mr. Kola
+NM2TECH LLC
