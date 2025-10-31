@@ -1679,7 +1679,7 @@ def parent_user_management():
     conn = sqlite3.connect('classroom.db')
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, username, email, phone, created_at 
+        SELECT id, username, email, phone, COALESCE(name, '') as name, created_at 
         FROM users 
         WHERE role = "parent" 
         ORDER BY created_at DESC
@@ -1694,12 +1694,14 @@ def parent_user_management():
         
         # Display parents in a table
         for parent in parents:
-            parent_id, username, email, phone, created_at = parent
-            with st.expander(f"👤 {username} - {email or 'No email'}", expanded=False):
+            parent_id, username, email, phone, name, created_at = parent
+            display_name = name if name else "Not set"
+            with st.expander(f"👤 {name if name else username} - {email or 'No email'}", expanded=False):
                 col1, col2, col3 = st.columns([2, 1, 1])
                 
                 with col1:
                     st.markdown(f"""
+                    **Name:** {display_name}  
                     **Username:** `{username}`  
                     **Email:** {email or 'Not provided'}  
                     **Phone:** {phone or 'Not provided'}  
@@ -1716,8 +1718,10 @@ def parent_user_management():
                         password = password_result[0] if password_result else "Password not found"
                         conn.close()
                         
+                        display_title = name if name else username
                         st.info(f"""
-                        **Login Credentials for {username}:**
+                        **Login Credentials for {display_title}:**
+                        - **Name:** {name if name else 'Not set'}
                         - **Username:** `{username}`
                         - **Password:** `{password}`
                         - **Email:** {email or 'Not provided'}
@@ -1776,10 +1780,45 @@ def parent_user_management():
                                 conn.close()
                                 st.success(f"✅ Password updated successfully for {username}!")
                                 st.rerun()
-                            else:
-                                st.error("Password must be at least 6 characters long.")
+                        else:
+                            st.error("Password must be at least 6 characters long.")
                         else:
                             st.error("Please enter a new password.")
+                
+                # Name editing section
+                st.markdown("---")
+                st.markdown("**✏️ Edit Parent Name**")
+                col_name1, col_name2 = st.columns([1, 1])
+                
+                with col_name1:
+                    current_name = name if name else ""
+                    updated_name = st.text_input(
+                        "Parent Name",
+                        value=current_name,
+                        help="Enter or update the parent's name (e.g., 'John and Jane Smith')",
+                        key=f"parent_name_{parent_id}"
+                    )
+                
+                with col_name2:
+                    st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+                    if st.button("💾 Save Name", key=f"parent_save_name_{parent_id}", type="primary"):
+                        # Save the name (trimmed), even if empty
+                        name_to_save = updated_name.strip() if updated_name else ""
+                        conn = sqlite3.connect('classroom.db')
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            'UPDATE users SET name = ? WHERE id = ?',
+                            (name_to_save, parent_id)
+                        )
+                        conn.commit()
+                        conn.close()
+                        if name_to_save:
+                            st.success(f"✅ Parent name updated successfully for {username}!")
+                            st.info("ℹ️ The welcome message will now show this name when the parent logs in.")
+                        else:
+                            st.success(f"✅ Parent name cleared for {username}!")
+                            st.info("ℹ️ The welcome message will now use email or username as fallback.")
+                        st.rerun()
     
     # Bulk export credentials
     if parents:
