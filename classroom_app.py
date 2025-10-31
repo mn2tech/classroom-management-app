@@ -259,17 +259,22 @@ def create_default_users():
     conn = sqlite3.connect('classroom.db')
     cursor = conn.cursor()
     
+    # Always ensure admin account exists (even if database already has users)
+    cursor.execute('SELECT * FROM users WHERE username = ?', ('admin',))
+    admin_exists = cursor.fetchone()
+    
+    if not admin_exists:
+        # Create admin account if it doesn't exist
+        cursor.execute('''
+            INSERT INTO users (id, username, password, role, email, phone)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (str(uuid.uuid4()), 'admin', 'admin123', 'admin', 'admin@nm2tech.com', ''))
+    
     # Check if users exist
     cursor.execute('SELECT COUNT(*) FROM users')
     count = cursor.fetchone()[0]
     
     if count == 0:
-        # Create admin account
-        cursor.execute('''
-            INSERT INTO users (id, username, password, role, email, phone)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (str(uuid.uuid4()), 'admin', 'admin123', 'admin', 'admin@nm2tech.com', ''))
-        
         # Create default teacher
         cursor.execute('''
             INSERT INTO users (id, username, password, role, email, phone)
