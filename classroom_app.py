@@ -1634,9 +1634,26 @@ def parent_user_management():
                     """)
                     st.rerun()
     
-    # Demo accounts warning
-    st.markdown("---")
-    st.warning("⚠️ **Demo Accounts Note:** The accounts 'parent1', 'parent2', 'parent3' are demo/test accounts. Delete them before production use or keep them separate from real parent accounts.")
+    # Demo accounts warning (dynamic - only shows accounts that exist)
+    conn_check = sqlite3.connect('classroom.db')
+    cursor_check = conn_check.cursor()
+    
+    # Check which demo accounts still exist
+    demo_accounts = ['parent1', 'parent2', 'parent3']
+    existing_demo_accounts = []
+    
+    for demo_account in demo_accounts:
+        cursor_check.execute('SELECT username FROM users WHERE username = ? AND role = "parent"', (demo_account,))
+        if cursor_check.fetchone():
+            existing_demo_accounts.append(demo_account)
+    
+    conn_check.close()
+    
+    # Only show warning if demo accounts exist
+    if existing_demo_accounts:
+        st.markdown("---")
+        demo_list = ", ".join([f"'{acc}'" for acc in existing_demo_accounts])
+        st.warning(f"⚠️ **Demo Accounts Note:** The account(s) {demo_list} are demo/test accounts. Delete them before production use or keep them separate from real parent accounts.")
     
     # View and manage existing parent accounts
     st.subheader("📋 Existing Parent Accounts")
@@ -1712,6 +1729,39 @@ def parent_user_management():
                                 conn.close()
                                 st.success("Parent account deleted!")
                                 st.rerun()
+                
+                # Password change section
+                st.markdown("---")
+                st.markdown("**🔐 Change Password**")
+                col_pwd1, col_pwd2 = st.columns([1, 1])
+                
+                with col_pwd1:
+                    new_password = st.text_input(
+                        "New Password",
+                        type="password",
+                        help="Enter new password for this parent",
+                        key=f"parent_new_pwd_{parent_id}"
+                    )
+                
+                with col_pwd2:
+                    st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+                    if st.button("🔄 Update Password", key=f"parent_change_pwd_{parent_id}", type="primary"):
+                        if new_password:
+                            if len(new_password) >= 6:
+                                conn = sqlite3.connect('classroom.db')
+                                cursor = conn.cursor()
+                                cursor.execute(
+                                    'UPDATE users SET password = ? WHERE id = ?',
+                                    (new_password, parent_id)
+                                )
+                                conn.commit()
+                                conn.close()
+                                st.success(f"✅ Password updated successfully for {username}!")
+                                st.rerun()
+                            else:
+                                st.error("Password must be at least 6 characters long.")
+                        else:
+                            st.error("Please enter a new password.")
     
     # Bulk export credentials
     if parents:
@@ -1931,6 +1981,39 @@ def admin_teacher_management():
                         - Password: `{password}`
                         - App: https://classroom-management-app-wca.streamlit.app
                         """)
+                
+                # Password change section
+                st.markdown("---")
+                st.markdown("**🔐 Change Password**")
+                col_new_pwd1, col_new_pwd2 = st.columns([1, 1])
+                
+                with col_new_pwd1:
+                    new_password = st.text_input(
+                        "New Password",
+                        type="password",
+                        help="Enter new password for this teacher",
+                        key=f"teacher_new_pwd_{teacher_id}"
+                    )
+                
+                with col_new_pwd2:
+                    st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+                    if st.button("🔄 Update Password", key=f"teacher_change_pwd_{teacher_id}", type="primary"):
+                        if new_password:
+                            if len(new_password) >= 6:
+                                conn = sqlite3.connect('classroom.db')
+                                cursor = conn.cursor()
+                                cursor.execute(
+                                    'UPDATE users SET password = ? WHERE id = ?',
+                                    (new_password, teacher_id)
+                                )
+                                conn.commit()
+                                conn.close()
+                                st.success(f"✅ Password updated successfully for {username}!")
+                                st.rerun()
+                            else:
+                                st.error("Password must be at least 6 characters long.")
+                        else:
+                            st.error("Please enter a new password.")
 
 def admin_system_info():
     st.subheader("📊 System Information & Statistics")
