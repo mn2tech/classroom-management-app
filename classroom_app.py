@@ -622,8 +622,8 @@ def teacher_dashboard():
     st.header("👩‍🏫 Teacher Dashboard")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📰 Newsletter", "📅 Events", "📝 Assignments", "👥 Students", "📊 Reports"
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📰 Newsletter", "📅 Events", "📝 Assignments", "👥 Students", "👨‍👩‍👧‍👦 Parents", "📊 Reports"
     ])
     
     with tab1:
@@ -639,6 +639,9 @@ def teacher_dashboard():
         student_management()
     
     with tab5:
+        parent_user_management()
+    
+    with tab6:
         reports_dashboard()
     
     # Footer at the bottom of teacher dashboard
@@ -1131,6 +1134,179 @@ def student_management():
     st.markdown("- Individual assignment completion")
     st.markdown("- Parent communication logs")
     st.markdown("- Performance analytics")
+
+def parent_user_management():
+    st.subheader("👨‍👩‍👧‍👦 Parent Account Management")
+    st.markdown("**Create and manage parent accounts for production use**")
+    
+    # Create new parent account
+    with st.expander("➕ Add New Parent Account", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            parent_username = st.text_input(
+                "Parent Username",
+                help="Choose a unique username for the parent (e.g., 'smith.family' or 'john.smith')",
+                key="new_parent_username"
+            )
+            parent_email = st.text_input(
+                "Email Address",
+                help="Parent's email address (for newsletters and communication)",
+                key="new_parent_email"
+            )
+            parent_password = st.text_input(
+                "Password",
+                type="password",
+                help="Create a secure password for the parent",
+                key="new_parent_password"
+            )
+        
+        with col2:
+            parent_name = st.text_input(
+                "Parent Name",
+                help="Full name (e.g., 'John and Jane Smith')",
+                key="new_parent_name"
+            )
+            parent_phone = st.text_input(
+                "Phone Number",
+                help="Contact phone number (optional)",
+                key="new_parent_phone"
+            )
+            student_name = st.text_input(
+                "Student Name",
+                help="Name of the parent's child in your class",
+                key="new_student_name"
+            )
+        
+        if st.button("➕ Create Parent Account", type="primary", key="create_parent_btn"):
+            if not parent_username or not parent_password or not parent_email:
+                st.error("Please fill in at least Username, Password, and Email address.")
+            else:
+                conn = sqlite3.connect('classroom.db')
+                cursor = conn.cursor()
+                
+                # Check if username already exists
+                cursor.execute('SELECT * FROM users WHERE username = ?', (parent_username,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    st.error(f"Username '{parent_username}' already exists. Please choose a different username.")
+                else:
+                    # Create parent account
+                    parent_id = str(uuid.uuid4())
+                    cursor.execute('''
+                        INSERT INTO users (id, username, password, role, email, phone)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (parent_id, parent_username, parent_password, 'parent', parent_email, parent_phone or ''))
+                    
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ Parent account created successfully!")
+                    st.info(f"""
+                    **Login Credentials:**
+                    - Username: `{parent_username}`
+                    - Password: `{parent_password}`
+                    - Email: {parent_email}
+                    
+                    Share these credentials with the parent along with the app link:
+                    https://classroom-management-app-wca.streamlit.app
+                    """)
+                    st.rerun()
+    
+    # Demo accounts warning
+    st.markdown("---")
+    st.warning("⚠️ **Demo Accounts Note:** The accounts 'parent1', 'parent2', 'parent3' are demo/test accounts. Delete them before production use or keep them separate from real parent accounts.")
+    
+    # View and manage existing parent accounts
+    st.subheader("📋 Existing Parent Accounts")
+    
+    conn = sqlite3.connect('classroom.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, username, email, phone, created_at 
+        FROM users 
+        WHERE role = "parent" 
+        ORDER BY created_at DESC
+    ''')
+    parents = cursor.fetchall()
+    conn.close()
+    
+    if not parents:
+        st.info("No parent accounts created yet. Use the form above to add parent accounts.")
+    else:
+        st.success(f"Found {len(parents)} parent account(s)")
+        
+        # Display parents in a table
+        for parent in parents:
+            parent_id, username, email, phone, created_at = parent
+            with st.expander(f"👤 {username} - {email or 'No email'}", expanded=False):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col1:
+                    st.markdown(f"""
+                    **Username:** `{username}`  
+                    **Email:** {email or 'Not provided'}  
+                    **Phone:** {phone or 'Not provided'}  
+                    **Created:** {created_at[:10] if created_at else 'N/A'}
+                    """)
+                
+                with col2:
+                    if st.button("📋 Show Credentials", key=f"show_creds_{parent_id}"):
+                        # Get password from database
+                        conn = sqlite3.connect('classroom.db')
+                        cursor = conn.cursor()
+                        cursor.execute('SELECT password FROM users WHERE id = ?', (parent_id,))
+                        password_result = cursor.fetchone()
+                        password = password_result[0] if password_result else "Password not found"
+                        conn.close()
+                        
+                        st.info(f"""
+                        **Login Credentials for {username}:**
+                        - **Username:** `{username}`
+                        - **Password:** `{password}`
+                        - **Email:** {email or 'Not provided'}
+                        - **App Link:** https://classroom-management-app-wca.streamlit.app
+                        
+                        Share these credentials securely with the parent.
+                        """)
+                
+                with col3:
+                    if st.button("🗑️ Delete", key=f"delete_parent_{parent_id}", type="secondary"):
+                        if st.session_state.get(f"confirm_delete_parent_{parent_id}", False):
+                            conn = sqlite3.connect('classroom.db')
+                            cursor = conn.cursor()
+                            cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
+                            conn.commit()
+                            conn.close()
+                            st.success("Parent account deleted successfully!")
+                            st.rerun()
+                        else:
+                            st.session_state[f"confirm_delete_parent_{parent_id}"] = True
+                            st.warning(f"⚠️ Are you sure you want to delete '{username}'? This action cannot be undone!")
+                            if st.button("✅ Yes, Delete", key=f"confirm_yes_{parent_id}"):
+                                conn = sqlite3.connect('classroom.db')
+                                cursor = conn.cursor()
+                                cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
+                                conn.commit()
+                                conn.close()
+                                st.success("Parent account deleted!")
+                                st.rerun()
+    
+    # Bulk export credentials
+    if parents:
+        st.markdown("---")
+        st.subheader("📤 Export Parent Credentials")
+        if st.button("📋 Copy All Parent Credentials", key="export_all_parents"):
+            credentials_text = "**Parent Login Credentials:**\n\n"
+            for parent in parents:
+                username, email = parent[1], parent[2]
+                credentials_text += f"**{email or username}:**\n"
+                credentials_text += f"- Username: `{username}`\n"
+                credentials_text += f"- Password: (check when account was created)\n"
+                credentials_text += f"- App Link: https://classroom-management-app-wca.streamlit.app\n\n"
+            
+            st.text_area("Copy these credentials:", credentials_text, height=300, key="credentials_export")
+            st.info("💡 Copy the text above and share it with parents via email or print.")
 
 def reports_dashboard():
     st.subheader("📊 Reports Dashboard")
