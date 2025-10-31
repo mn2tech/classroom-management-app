@@ -587,8 +587,36 @@ def main():
     
     # User is logged in
     user = st.session_state.user
-    st.sidebar.success(f"Welcome, {user['username']}!")
-    st.sidebar.info(f"Role: {user['role']}")
+    
+    # Personalize greeting based on role
+    if user['role'] == 'parent':
+        # Try to extract name from email or use username in a friendly way
+        email = user.get('email', '')
+        if email:
+            # Extract name from email (e.g., "john.smith@email.com" -> "John Smith")
+            email_name = email.split('@')[0].replace('.', ' ').title()
+            welcome_message = f"Welcome, {email_name}!"
+        else:
+            # Use username if no email
+            username = user['username'].replace('.', ' ').replace('_', ' ').title()
+            welcome_message = f"Welcome, {username}!"
+        st.sidebar.success(welcome_message)
+        st.sidebar.info("👨‍👩‍👧‍👦 Parent Access")
+    elif user['role'] == 'teacher':
+        # For teachers, use their username or email name
+        email = user.get('email', '')
+        if email and 'simms' in email.lower():
+            st.sidebar.success("Welcome, Mrs. Simms!")
+        else:
+            username = user['username'].replace('.', ' ').replace('_', ' ').title()
+            st.sidebar.success(f"Welcome, {username}!")
+        st.sidebar.info("👩‍🏫 Teacher Dashboard")
+    elif user['role'] == 'admin':
+        st.sidebar.success("Welcome, Administrator!")
+        st.sidebar.info("👑 Admin Dashboard")
+    else:
+        st.sidebar.success(f"Welcome, {user['username']}!")
+        st.sidebar.info(f"Role: {user['role']}")
     
     if st.sidebar.button("Logout"):
         del st.session_state.user
@@ -698,7 +726,18 @@ def teacher_dashboard():
     """, unsafe_allow_html=True)
 
 def parent_dashboard():
-    st.header("👨‍👩‍👧‍👦 Parent Dashboard")
+    user = st.session_state.user
+    # Personalize dashboard header with parent's name
+    email = user.get('email', '')
+    if email:
+        parent_name = email.split('@')[0].replace('.', ' ').title()
+        dashboard_title = f"👨‍👩‍👧‍👦 Welcome, {parent_name}!"
+    else:
+        username = user['username'].replace('.', ' ').replace('_', ' ').title()
+        dashboard_title = f"👨‍👩‍👧‍👦 Welcome, {username}!"
+    
+    st.header(dashboard_title)
+    st.markdown("**Parent Dashboard - View your child's progress, newsletters, and events**")
     
     # Navigation tabs
     tab1, tab2, tab3, tab4 = st.tabs([
