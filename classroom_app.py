@@ -549,20 +549,10 @@ def main():
                 st.sidebar.success(f"Logged in as {user['role']}: {user['username']}")
                 st.rerun()
             else:
-                st.sidebar.error("Invalid credentials")
-                st.sidebar.info(f"Debug: Username='{username}', Password='{password}'")
+                st.sidebar.error("Invalid credentials. Please check your username and password.")
         
         st.sidebar.markdown("---")
-        st.sidebar.markdown("**Login Credentials:**")
-        st.sidebar.markdown("**Admin:** admin / admin123")
-        st.sidebar.markdown("**Teacher:** mrs.simms / password123")
-        st.sidebar.markdown("**Parent:** parent1 / password123")
-        
-        # Debug: Show available users
-        with st.sidebar.expander("🔍 Debug: Available Users"):
-            users = debug_users()
-            for user in users:
-                st.write(f"- {user[0]} ({user[1]}) - {user[2]}")
+        st.sidebar.info("💡 Contact your administrator for login credentials")
         
         # NM2Tech branding in sidebar
         st.sidebar.markdown("---")
