@@ -508,15 +508,22 @@ def generate_newsletter_pdf(newsletter_data):
 
 # Create default users and sample data
 create_default_users()
-# Only create sample newsletter if database is completely empty
-conn = sqlite3.connect('classroom.db')
-cursor = conn.cursor()
-cursor.execute('SELECT COUNT(*) FROM newsletters')
-count = cursor.fetchone()[0]
-conn.close()
 
-if count == 0:
-    create_sample_newsletter()
+# Sample newsletter creation is disabled by default
+# It will only be created manually via the "Load Sample Data" button in the UI
+# This prevents newsletters from being auto-recreated when deleted
+# Uncomment the code below if you want to auto-create sample newsletter on initial setup only
+
+# conn = sqlite3.connect('classroom.db')
+# cursor = conn.cursor()
+# cursor.execute('SELECT COUNT(*) FROM newsletters')
+# newsletter_count = cursor.fetchone()[0]
+# conn.close()
+# 
+# # Only create sample newsletter once on very first run (completely fresh database)
+# # Once users start using the app, this won't run anymore
+# if newsletter_count == 0:
+#     create_sample_newsletter()
 
 # Main app
 def main():
