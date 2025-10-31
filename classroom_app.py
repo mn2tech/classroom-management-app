@@ -237,6 +237,251 @@ def test_email_connection():
     except Exception as e:
         return False, f"Email connection test failed: {str(e)}"
 
+# Chatbot Functions
+def chatbot_response(user_message: str, user_role: str) -> str:
+    """Chatbot that answers common questions based on user role"""
+    user_message_lower = user_message.lower().strip()
+    
+    # General questions (all users)
+    if any(word in user_message_lower for word in ['hello', 'hi', 'hey', 'greeting']):
+        return "Hello! I'm here to help you with the Classroom Management App. What would you like to know?"
+    
+    if any(word in user_message_lower for word in ['help', 'what can', 'how to', 'guide']):
+        if user_role == 'admin':
+            return """As an Admin, you can:
+• Manage all users (admins, teachers, parents)
+• Create teacher accounts
+• Create parent accounts
+• View system statistics
+• Manage newsletters
+• Full system access
+
+What would you like to know more about?"""
+        elif user_role == 'teacher':
+            return """As a Teacher, you can:
+• Create and manage newsletters
+• Create events and manage RSVPs
+• Create assignments
+• View and manage students
+• Create parent accounts
+• Generate reports
+
+What would you like help with?"""
+        else:
+            return """As a Parent, you can:
+• View newsletters
+• See upcoming events and RSVP
+• View assignments
+• Track your child's progress
+• Download PDF newsletters
+
+How can I help you today?"""
+    
+    if any(word in user_message_lower for word in ['newsletter', 'newsletters']):
+        if user_role == 'teacher' or user_role == 'admin':
+            return """To create a newsletter:
+1. Go to the "Newsletter" tab
+2. Click "Create New Newsletter"
+3. Fill in the title, date, and content sections
+4. Click "Create Newsletter"
+
+To share with parents:
+• Parents log in and view newsletters anytime
+• You can download PDFs to share manually
+• All newsletters are saved and accessible to parents"""
+        else:
+            return """To view newsletters:
+1. Go to the "Newsletter" tab in your dashboard
+2. Click on any newsletter to view it
+3. Click "Download PDF" if you want a copy
+4. All past newsletters are available here"""
+    
+    if any(word in user_message_lower for word in ['login', 'password', 'credentials']):
+        return """Login Issues:
+• Make sure you're using the correct username and password
+• Contact your administrator if you forgot your password
+• The app URL is: https://classroom-management-app-wca.streamlit.app
+
+For new accounts, contact the administrator who created your account."""
+    
+    if any(word in user_message_lower for word in ['parent account', 'create parent', 'add parent']):
+        if user_role == 'admin' or user_role == 'teacher':
+            return """To create a parent account:
+1. Go to the "Parents" tab
+2. Click "Add New Parent Account"
+3. Fill in: Username, Email, Password, Name, Phone, Student Name
+4. Click "Create Parent Account"
+5. Share the credentials with the parent securely"""
+        else:
+            return "Only teachers and admins can create parent accounts. Please contact your teacher or administrator."
+    
+    if any(word in user_message_lower for word in ['event', 'events', 'rsvp']):
+        if user_role == 'teacher' or user_role == 'admin':
+            return """To create an event:
+1. Go to the "Events" tab
+2. Click "Create New Event"
+3. Fill in: Title, Description, Date, Time, Location, Max Attendees
+4. Click "Create Event"
+
+Parents can then RSVP through the Events tab."""
+        else:
+            return """To RSVP to an event:
+1. Go to the "Events" tab
+2. Find the event you want to attend
+3. Click "RSVP" and enter the number of attendees
+4. Add any notes if needed
+5. Click "Submit RSVP"
+
+You can see all upcoming events in the Events tab."""
+    
+    if any(word in user_message_lower for word in ['assignment', 'assignments', 'homework']):
+        if user_role == 'teacher' or user_role == 'admin':
+            return """To create an assignment:
+1. Go to the "Assignments" tab
+2. Click "Create New Assignment"
+3. Fill in: Title, Description, Subject, Due Date, Word List, Memory Verse
+4. Click "Create Assignment"
+
+Parents and students can view assignments in their dashboard."""
+        else:
+            return """To view assignments:
+1. Go to the "Assignments" tab
+2. See all assignments with due dates
+3. View word lists and memory verses
+4. Track your child's progress on assignments"""
+    
+    if any(word in user_message_lower for word in ['app url', 'website', 'link', 'access']):
+        return """The app is available at:
+🌐 https://classroom-management-app-wca.streamlit.app
+
+Works on any device - computer, tablet, or phone. Just open in your web browser!"""
+    
+    if any(word in user_message_lower for word in ['child', 'student', 'progress', 'my child']):
+        if user_role == 'parent':
+            return """To view your child's progress:
+1. Go to the "My Child" tab
+2. See assignments and progress
+3. View performance on different subjects
+4. Track completion of tasks
+
+If you don't see your child's information, contact the teacher to link your account to your child."""
+        else:
+            return "This feature is for parents to view their child's progress. If you're a teacher, use the Students tab to manage student information."
+    
+    if any(word in user_message_lower for word in ['admin', 'administrator', 'system']):
+        if user_role == 'admin':
+            return """As an Admin, you have full system access:
+• User Management: View and manage all users
+• Teacher Management: Create and manage teacher accounts
+• Parent Management: Create and manage parent accounts
+• Newsletters: Full access to all newsletters
+• System Info: View statistics and system details
+• Settings: Configure system settings
+
+What would you like to manage?"""
+        else:
+            return "Only users with admin role can access admin features. Please contact your administrator for admin-related requests."
+    
+    if any(word in user_message_lower for word in ['download', 'pdf', 'save']):
+        return """To download newsletters as PDF:
+1. Go to the Newsletter tab
+2. Find the newsletter you want
+3. Click "Download PDF" button
+4. The PDF will download to your device
+
+You can then save or share the PDF as needed."""
+    
+    if any(word in user_message_lower for word in ['contact', 'support', 'help', 'problem', 'issue', 'error']):
+        return """For support:
+• Contact your teacher or administrator
+• Check the instructions document provided
+• Make sure you're using the correct login credentials
+• Try refreshing the page if something doesn't work
+
+Technical support: Contact NM2TECH LLC at https://www.nm2tech.com"""
+    
+    if any(word in user_message_lower for word in ['forgot', 'reset', 'change password']):
+        return """To reset or change your password:
+• Contact your administrator (admin user)
+• The administrator can view or reset your password
+• In the future, a password change feature will be available
+
+For now, only administrators can manage passwords."""
+    
+    # Default response if no match
+    return """I'm here to help! Here are some things I can answer:
+• How to use newsletters
+• Creating events and RSVPs
+• Managing assignments
+• Parent account setup
+• Login issues
+• App features by role
+
+Can you rephrase your question or ask about one of these topics?"""
+
+def chatbot_interface(user_role: str):
+    """Display chatbot interface"""
+    st.subheader("💬 Help Chatbot")
+    st.markdown("**Ask me anything about using the Classroom Management App!**")
+    
+    # Initialize chat history
+    if "chatbot_messages" not in st.session_state:
+        st.session_state.chatbot_messages = [
+            {"role": "assistant", "content": "Hello! I'm your Classroom Management App assistant. How can I help you today?"}
+        ]
+    
+    # Display chat messages
+    for message in st.session_state.chatbot_messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ask a question about the app..."):
+        # Add user message
+        st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.write(prompt)
+        
+        # Get chatbot response
+        response = chatbot_response(prompt, user_role)
+        
+        # Add assistant response
+        st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+        with st.chat_message("assistant"):
+            st.write(response)
+    
+    # Quick action buttons
+    st.markdown("**Quick Questions:**")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📰 How to create newsletter?", key="chatbot_newsletter"):
+            st.session_state.chatbot_messages.append({"role": "user", "content": "How do I create a newsletter?"})
+            response = chatbot_response("How do I create a newsletter?", user_role)
+            st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+            st.rerun()
+    
+    with col2:
+        if st.button("👥 Create parent account?", key="chatbot_parent"):
+            st.session_state.chatbot_messages.append({"role": "user", "content": "How do I create a parent account?"})
+            response = chatbot_response("How do I create a parent account?", user_role)
+            st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+            st.rerun()
+    
+    with col3:
+        if st.button("❓ What can I do?", key="chatbot_help"):
+            st.session_state.chatbot_messages.append({"role": "user", "content": "What can I do?"})
+            response = chatbot_response("What can I do?", user_role)
+            st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+            st.rerun()
+    
+    # Clear chat button
+    if st.button("🗑️ Clear Chat", key="chatbot_clear"):
+        st.session_state.chatbot_messages = [
+            {"role": "assistant", "content": "Chat cleared! How can I help you?"}
+        ]
+        st.rerun()
+
 # Authentication
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
     conn = sqlite3.connect('classroom.db')
@@ -655,8 +900,8 @@ def admin_dashboard():
     st.markdown("**Full System Management - Manage Teachers, Parents, and Everything**")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "⚙️ Settings"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "⚙️ Settings", "💬 Help Chatbot"
     ])
     
     with tab1:
@@ -677,6 +922,9 @@ def admin_dashboard():
     with tab6:
         admin_settings()
     
+    with tab7:
+        chatbot_interface('admin')
+    
     # Footer
     st.markdown("---")
     st.markdown("""
@@ -693,8 +941,8 @@ def teacher_dashboard():
     st.header("👩‍🏫 Teacher Dashboard")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📰 Newsletter", "📅 Events", "📝 Assignments", "👥 Students", "👨‍👩‍👧‍👦 Parents", "📊 Reports"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "📰 Newsletter", "📅 Events", "📝 Assignments", "👥 Students", "👨‍👩‍👧‍👦 Parents", "📊 Reports", "💬 Help Chatbot"
     ])
     
     with tab1:
@@ -714,6 +962,9 @@ def teacher_dashboard():
     
     with tab6:
         reports_dashboard()
+    
+    with tab7:
+        chatbot_interface('teacher')
     
     # Footer at the bottom of teacher dashboard
     st.markdown("---")
@@ -745,8 +996,8 @@ def parent_dashboard():
     st.markdown("**Parent Dashboard - View your child's progress, newsletters, and events**")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📰 Newsletter", "📅 Events", "📝 Assignments", "👶 My Child"
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📰 Newsletter", "📅 Events", "📝 Assignments", "👶 My Child", "💬 Help Chatbot"
     ])
     
     with tab1:
@@ -760,6 +1011,9 @@ def parent_dashboard():
     
     with tab4:
         view_child_progress()
+    
+    with tab5:
+        chatbot_interface('parent')
     
     # Footer at the bottom of parent dashboard
     st.markdown("---")
