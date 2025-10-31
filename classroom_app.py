@@ -1007,8 +1007,8 @@ def admin_dashboard():
     st.markdown("**Full System Management - Manage Teachers, Parents, and Everything**")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "⚙️ Settings", "💬 Help Chatbot"
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "⚙️ Settings"
     ])
     
     with tab1:
@@ -1029,9 +1029,6 @@ def admin_dashboard():
     with tab6:
         admin_settings()
     
-    with tab7:
-        chatbot_interface('admin')
-    
     # Footer
     st.markdown("---")
     st.markdown("""
@@ -1048,8 +1045,8 @@ def teacher_dashboard():
     st.header("👩‍🏫 Teacher Dashboard")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "📰 Newsletter", "📅 Events", "📝 Assignments", "👥 Students", "👨‍👩‍👧‍👦 Parents", "📊 Reports", "💬 Help Chatbot"
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📰 Newsletter", "📅 Events", "📝 Assignments", "👥 Students", "👨‍👩‍👧‍👦 Parents", "📊 Reports"
     ])
     
     with tab1:
@@ -1069,9 +1066,6 @@ def teacher_dashboard():
     
     with tab6:
         reports_dashboard()
-    
-    with tab7:
-        chatbot_interface('teacher')
     
     # Footer at the bottom of teacher dashboard
     st.markdown("---")
@@ -1108,8 +1102,8 @@ def parent_dashboard():
     st.markdown("**Parent Dashboard - View your child's progress, newsletters, and events**")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📰 Newsletter", "📅 Events", "📝 Assignments", "👶 My Child", "💬 Help Chatbot"
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📰 Newsletter", "📅 Events", "📝 Assignments", "👶 My Child"
     ])
     
     with tab1:
@@ -1123,9 +1117,6 @@ def parent_dashboard():
     
     with tab4:
         view_child_progress()
-    
-    with tab5:
-        chatbot_interface('parent')
     
     # Footer at the bottom of parent dashboard
     st.markdown("---")
