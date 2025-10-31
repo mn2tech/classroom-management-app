@@ -1780,8 +1780,8 @@ def parent_user_management():
                                 conn.close()
                                 st.success(f"✅ Password updated successfully for {username}!")
                                 st.rerun()
-                        else:
-                            st.error("Password must be at least 6 characters long.")
+                            else:
+                                st.error("Password must be at least 6 characters long.")
                         else:
                             st.error("Please enter a new password.")
                 
