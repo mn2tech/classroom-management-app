@@ -482,6 +482,59 @@ def chatbot_interface(user_role: str):
         ]
         st.rerun()
 
+def chatbot_interface_compact(user_role: str):
+    """Compact chatbot interface for popup"""
+    # Initialize chat history (use same messages as main chatbot)
+    if "chatbot_messages" not in st.session_state:
+        st.session_state.chatbot_messages = [
+            {"role": "assistant", "content": "Hello! I'm your Classroom Management App assistant. How can I help you today?"}
+        ]
+    
+    # Display chat messages in a scrollable container
+    st.markdown('<div style="max-height: 400px; overflow-y: auto; margin-bottom: 10px;">', unsafe_allow_html=True)
+    for message in st.session_state.chatbot_messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Chat input
+    if prompt := st.chat_input("Ask a question..."):
+        # Add user message
+        st.session_state.chatbot_messages.append({"role": "user", "content": prompt})
+        
+        # Get chatbot response
+        response = chatbot_response(prompt, user_role)
+        
+        # Add assistant response
+        st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+        st.rerun()
+    
+    # Quick action buttons (compact)
+    with st.expander("💡 Quick Questions", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📰 Newsletter?", key="popup_newsletter"):
+                st.session_state.chatbot_messages.append({"role": "user", "content": "How do I create a newsletter?"})
+                response = chatbot_response("How do I create a newsletter?", user_role)
+                st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+                st.rerun()
+            if st.button("👥 Parent account?", key="popup_parent"):
+                st.session_state.chatbot_messages.append({"role": "user", "content": "How do I create a parent account?"})
+                response = chatbot_response("How do I create a parent account?", user_role)
+                st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+                st.rerun()
+        with col2:
+            if st.button("❓ What can I do?", key="popup_help"):
+                st.session_state.chatbot_messages.append({"role": "user", "content": "What can I do?"})
+                response = chatbot_response("What can I do?", user_role)
+                st.session_state.chatbot_messages.append({"role": "assistant", "content": response})
+                st.rerun()
+            if st.button("🗑️ Clear", key="popup_clear"):
+                st.session_state.chatbot_messages = [
+                    {"role": "assistant", "content": "Chat cleared! How can I help you?"}
+                ]
+                st.rerun()
+
 # Authentication
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
     conn = sqlite3.connect('classroom.db')
@@ -837,6 +890,38 @@ def main():
     
     # User is logged in
     user = st.session_state.user
+    
+    # Floating chatbot button in sidebar (always visible)
+    with st.sidebar:
+        st.markdown("---")
+        # Toggle chatbot visibility
+        chatbot_open = st.session_state.get('show_chatbot_popup', False)
+        if st.button("💬 Help Chatbot", 
+                     type="primary", use_container_width=True, key="toggle_chatbot"):
+            st.session_state.show_chatbot_popup = not chatbot_open
+            st.rerun()
+    
+    # Chatbot popup - appears at top of page when button is clicked
+    if st.session_state.get('show_chatbot_popup', False):
+        # Create prominent chatbot popup at top of page
+        st.markdown("---")
+        with st.container():
+            # Header with close button
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.markdown("### 💬 Help Chatbot - Ask Me Anything!")
+            with col2:
+                if st.button("✕ Close Chatbot", key="close_chatbot", type="secondary"):
+                    st.session_state.show_chatbot_popup = False
+                    st.rerun()
+            
+            # Chatbot interface in popup with border
+            st.markdown('<div style="border: 2px solid #007bff; border-radius: 10px; padding: 15px; background-color: #f8f9fa; margin: 10px 0;">', unsafe_allow_html=True)
+            
+            chatbot_interface_compact(user['role'])
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("---")
     
     # Personalize greeting based on role
     if user['role'] == 'parent':
