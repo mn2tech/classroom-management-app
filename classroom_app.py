@@ -39,9 +39,17 @@ def init_database():
             role TEXT,
             email TEXT,
             phone TEXT,
+            name TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Add name column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN name TEXT')
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS newsletters (
@@ -549,7 +557,8 @@ def authenticate_user(username: str, password: str) -> Optional[Dict]:
             'username': user[1],
             'role': user[3],
             'email': user[4],
-            'phone': user[5]
+            'phone': user[5],
+            'name': user[6] if len(user) > 6 else None
         }
     return None
 
@@ -925,16 +934,21 @@ def main():
     
     # Personalize greeting based on role
     if user['role'] == 'parent':
-        # Try to extract name from email or use username in a friendly way
-        email = user.get('email', '')
-        if email:
-            # Extract name from email (e.g., "john.smith@email.com" -> "John Smith")
-            email_name = email.split('@')[0].replace('.', ' ').title()
-            welcome_message = f"Welcome, {email_name}!"
+        # Use stored name first, then fallback to email or username
+        parent_name = user.get('name', '')
+        if parent_name:
+            welcome_message = f"Welcome, {parent_name}!"
         else:
-            # Use username if no email
-            username = user['username'].replace('.', ' ').replace('_', ' ').title()
-            welcome_message = f"Welcome, {username}!"
+            # Try to extract name from email or use username in a friendly way
+            email = user.get('email', '')
+            if email:
+                # Extract name from email (e.g., "john.smith@email.com" -> "John Smith")
+                email_name = email.split('@')[0].replace('.', ' ').title()
+                welcome_message = f"Welcome, {email_name}!"
+            else:
+                # Use username if no email
+                username = user['username'].replace('.', ' ').replace('_', ' ').title()
+                welcome_message = f"Welcome, {username}!"
         st.sidebar.success(welcome_message)
         st.sidebar.info("👨‍👩‍👧‍👦 Parent Access")
     elif user['role'] == 'teacher':
@@ -1069,13 +1083,18 @@ def teacher_dashboard():
 def parent_dashboard():
     user = st.session_state.user
     # Personalize dashboard header with parent's name
-    email = user.get('email', '')
-    if email:
-        parent_name = email.split('@')[0].replace('.', ' ').title()
+    parent_name = user.get('name', '')
+    if parent_name:
         dashboard_title = f"👨‍👩‍👧‍👦 Welcome, {parent_name}!"
     else:
-        username = user['username'].replace('.', ' ').replace('_', ' ').title()
-        dashboard_title = f"👨‍👩‍👧‍👦 Welcome, {username}!"
+        # Fallback to email or username if name not available
+        email = user.get('email', '')
+        if email:
+            parent_name = email.split('@')[0].replace('.', ' ').title()
+            dashboard_title = f"👨‍👩‍👧‍👦 Welcome, {parent_name}!"
+        else:
+            username = user['username'].replace('.', ' ').replace('_', ' ').title()
+            dashboard_title = f"👨‍👩‍👧‍👦 Welcome, {username}!"
     
     st.header(dashboard_title)
     st.markdown("**Parent Dashboard - View your child's progress, newsletters, and events**")
@@ -1616,9 +1635,9 @@ def parent_user_management():
                     # Create parent account
                     parent_id = str(uuid.uuid4())
                     cursor.execute('''
-                        INSERT INTO users (id, username, password, role, email, phone)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (parent_id, parent_username, parent_password, 'parent', parent_email, parent_phone or ''))
+                        INSERT INTO users (id, username, password, role, email, phone, name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (parent_id, parent_username, parent_password, 'parent', parent_email, parent_phone or '', parent_name or ''))
                     
                     conn.commit()
                     conn.close()
