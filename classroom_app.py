@@ -547,18 +547,26 @@ def chatbot_interface_compact(user_role: str):
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
     conn = sqlite3.connect('classroom.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password))
+    # Query specific columns to avoid column order issues
+    cursor.execute('''
+        SELECT id, username, password, role, email, phone, 
+               COALESCE(name, '') as name, created_at
+        FROM users 
+        WHERE username = ? AND password = ?
+    ''', (username, password))
     user = cursor.fetchone()
     conn.close()
     
     if user:
+        # Get name, treat empty strings as None
+        name_value = user[6].strip() if user[6] and user[6].strip() else None
         return {
             'id': user[0],
             'username': user[1],
             'role': user[3],
             'email': user[4],
             'phone': user[5],
-            'name': user[6] if len(user) > 6 else None
+            'name': name_value
         }
     return None
 
