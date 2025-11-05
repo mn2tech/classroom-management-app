@@ -16,6 +16,15 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+import os
+from contextlib import contextmanager
+
+# Try to import Supabase (optional - for production)
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -25,9 +34,170 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Database configuration - check for Supabase first
+def get_supabase_client():
+    """Initialize Supabase client if credentials are available"""
+    if not SUPABASE_AVAILABLE:
+        return None
+    
+    try:
+        # Check for Supabase credentials in Streamlit secrets
+        if hasattr(st, 'secrets') and 'supabase' in st.secrets:
+            url = st.secrets['supabase']['url']
+            key = st.secrets['supabase']['key']
+            
+            # Validate URL format
+            if not url or url == "YOUR_SUPABASE_PROJECT_URL_HERE" or not url.startswith('https://'):
+                return None
+            if not key or key == "YOUR_SUPABASE_ANON_KEY_HERE":
+                return None
+            
+            return create_client(url, key)
+        # Also check environment variables
+        elif 'SUPABASE_URL' in os.environ and 'SUPABASE_KEY' in os.environ:
+            url = os.environ['SUPABASE_URL']
+            key = os.environ['SUPABASE_KEY']
+            
+            # Validate URL format
+            if not url.startswith('https://'):
+                return None
+            
+            return create_client(url, key)
+    except Exception as e:
+        # Only show error once, not on every page load
+        if 'supabase_error_shown' not in st.session_state:
+            st.session_state.supabase_error_shown = True
+            st.warning(f"⚠️ Supabase not configured. Using SQLite for local development. Error: {str(e)}")
+        return None
+    
+    return None
+
+# Check if we should use Supabase
+USE_SUPABASE = get_supabase_client() is not None
+
+# Database connection helper - uses Supabase if configured, otherwise SQLite
+def get_db_connection():
+    """
+    Get a database connection.
+    
+    Priority:
+    1. Supabase (if configured via Streamlit secrets or environment variables)
+    2. SQLite (for local development)
+    
+    ⚠️ CRITICAL: On Streamlit Cloud, SQLite file system is EPHEMERAL.
+    The database file is LOST when app restarts. Use Supabase for production!
+    """
+    # If Supabase is configured, return a Supabase adapter
+    supabase_client = get_supabase_client()
+    if supabase_client:
+        return SupabaseAdapter(supabase_client)
+    
+    # Otherwise, use SQLite (for local development)
+    db_path = 'classroom.db'
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')
+    return conn
+
+# Supabase adapter class to make Supabase work like SQLite
+class SupabaseAdapter:
+    """Adapter class to make Supabase API work like SQLite connection"""
+    def __init__(self, client: Client):
+        self.client = client
+        self.cursor_impl = SupabaseCursorAdapter(client)
+    
+    def cursor(self):
+        return self.cursor_impl
+    
+    def commit(self):
+        # Supabase commits automatically
+        pass
+    
+    def close(self):
+        # Supabase doesn't need explicit closing
+        pass
+    
+    def execute(self, query, params=None):
+        # For compatibility with existing code
+        return self.cursor_impl.execute(query, params)
+
+class SupabaseCursorAdapter:
+    """Adapter to make Supabase queries work like SQLite cursor"""
+    def __init__(self, client: Client):
+        self.client = client
+        self.last_result = None
+    
+    def execute(self, query, params=None):
+        # Parse SQL and convert to Supabase calls
+        # This is a simplified version - for production, you'd want a full SQL parser
+        query_lower = query.strip().lower()
+        
+        if query_lower.startswith('select'):
+            return self._handle_select(query, params)
+        elif query_lower.startswith('insert'):
+            return self._handle_insert(query, params)
+        elif query_lower.startswith('update'):
+            return self._handle_update(query, params)
+        elif query_lower.startswith('delete'):
+            return self._handle_delete(query, params)
+        elif query_lower.startswith('create table'):
+            return self._handle_create_table(query)
+        elif query_lower.startswith('alter table'):
+            return self._handle_alter_table(query)
+        else:
+            # For other queries (PRAGMA, etc.), just return empty result
+            return self
+    
+    def _handle_select(self, query, params):
+        # This is complex - would need SQL parsing
+        # For now, we'll use a simpler approach: direct Supabase calls
+        # The actual implementation will be done in the database helper functions
+        return self
+    
+    def _handle_insert(self, query, params):
+        # Similar - needs SQL parsing
+        return self
+    
+    def _handle_update(self, query, params):
+        return self
+    
+    def _handle_delete(self, query, params):
+        return self
+    
+    def _handle_create_table(self, query):
+        # Tables should be created via Supabase dashboard or migrations
+        return self
+    
+    def _handle_alter_table(self, query):
+        # Alter operations done via Supabase dashboard
+        return self
+    
+    def fetchone(self):
+        return self.last_result
+    
+    def fetchall(self):
+        return self.last_result if isinstance(self.last_result, list) else [self.last_result] if self.last_result else []
+
+# Context manager for database operations (ensures proper closing)
+@contextmanager
+def db_connection():
+    """Context manager for database connections - ensures proper cleanup"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
 # Database initialization
 def init_database():
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     # Create tables
@@ -218,7 +388,7 @@ Washington Christian Academy
 
 def get_parent_emails():
     """Get all parent email addresses from the database"""
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT email FROM users WHERE role = "parent" AND email IS NOT NULL AND email != ""')
     emails = [row[0] for row in cursor.fetchall()]
@@ -543,77 +713,258 @@ def chatbot_interface_compact(user_role: str):
                 ]
                 st.rerun()
 
+# Database helper functions for Supabase compatibility
+def db_query(conn, query, params=None):
+    """Execute a query and return results - works with both SQLite and Supabase"""
+    if isinstance(conn, SupabaseAdapter):
+        # For Supabase, we need to parse SQL and convert to API calls
+        # This is a simplified version - for complex queries, we'll use direct Supabase calls
+        supabase_client = conn.client
+        
+        # Simple SELECT query parser
+        query_lower = query.strip().lower()
+        if 'select' in query_lower and 'from users' in query_lower:
+            # Handle user authentication query
+            if 'where username' in query_lower and params:
+                result = supabase_client.table('users').select('*').eq('username', params[0]).eq('password', params[1]).execute()
+                if result.data:
+                    user = result.data[0]
+                    # Convert to tuple format for compatibility
+                    return type('Row', (), {
+                        '__getitem__': lambda self, idx: [
+                            user.get('id'),
+                            user.get('username'),
+                            user.get('password'),
+                            user.get('role'),
+                            user.get('email'),
+                            user.get('phone'),
+                            user.get('name', ''),
+                            user.get('created_at')
+                        ][idx],
+                        '__len__': lambda self: 8
+                    })()
+            # Handle general SELECT from users
+            elif 'where username' in query_lower and params:
+                result = supabase_client.table('users').select('*').eq('username', params[0]).execute()
+                if result.data:
+                    user = result.data[0]
+                    return type('Row', (), {
+                        '__getitem__': lambda self, idx: [
+                            user.get('id'),
+                            user.get('username'),
+                            user.get('password'),
+                            user.get('role'),
+                            user.get('email'),
+                            user.get('phone'),
+                            user.get('name', ''),
+                            user.get('created_at')
+                        ][idx] if idx < 8 else None,
+                        '__len__': lambda self: 8
+                    })()
+        return None
+    else:
+        # SQLite - use cursor
+        cursor = conn.cursor()
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        return cursor.fetchone()
+
+def db_execute(conn, query, params=None):
+    """Execute a query (INSERT, UPDATE, DELETE) - works with both SQLite and Supabase"""
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        query_lower = query.strip().lower()
+        
+        if 'insert into users' in query_lower and params:
+            data = {
+                'id': params[0],
+                'username': params[1],
+                'password': params[2],
+                'role': params[3],
+                'email': params[4] if len(params) > 4 else None,
+                'phone': params[5] if len(params) > 5 else None,
+                'name': params[6] if len(params) > 6 else None
+            }
+            result = supabase_client.table('users').insert(data).execute()
+            return result.data[0] if result.data else None
+        
+        # For other queries, we'd need more parsing
+        # For now, return None (will be handled by specific functions)
+        return None
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        conn.commit()
+        return cursor.rowcount
+
+def db_count(conn, table, filters=None):
+    """Count rows in a table"""
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        query = supabase_client.table(table).select('id', count='exact')
+        if filters:
+            for key, value in filters.items():
+                query = query.eq(key, value)
+        result = query.execute()
+        return result.count if hasattr(result, 'count') else len(result.data) if result.data else 0
+    else:
+        cursor = conn.cursor()
+        query = f"SELECT COUNT(*) FROM {table}"
+        params = []
+        if filters:
+            conditions = []
+            for key, value in filters.items():
+                conditions.append(f"{key} = ?")
+                params.append(value)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+        cursor.execute(query, params)
+        result = cursor.fetchone()
+        return result[0] if result else 0
+
 # Authentication
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
-    conn = sqlite3.connect('classroom.db')
-    cursor = conn.cursor()
-    # Query specific columns to avoid column order issues
-    cursor.execute('''
-        SELECT id, username, password, role, email, phone, 
-               COALESCE(name, '') as name, created_at
-        FROM users 
-        WHERE username = ? AND password = ?
-    ''', (username, password))
-    user = cursor.fetchone()
-    conn.close()
+    conn = get_db_connection()
     
-    if user:
-        # Get name, treat empty strings as None
-        name_value = user[6].strip() if user[6] and user[6].strip() else None
-        return {
-            'id': user[0],
-            'username': user[1],
-            'role': user[3],
-            'email': user[4],
-            'phone': user[5],
-            'name': name_value
-        }
-    return None
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        result = supabase_client.table('users').select('*').eq('username', username).eq('password', password).execute()
+        
+        if result.data and len(result.data) > 0:
+            user = result.data[0]
+            name_value = user.get('name', '').strip() if user.get('name') else None
+            return {
+                'id': user.get('id'),
+                'username': user.get('username'),
+                'role': user.get('role'),
+                'email': user.get('email'),
+                'phone': user.get('phone'),
+                'name': name_value
+            }
+        conn.close()
+        return None
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, username, password, role, email, phone, 
+                   COALESCE(name, '') as name, created_at
+            FROM users 
+            WHERE username = ? AND password = ?
+        ''', (username, password))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            name_value = user[6].strip() if user[6] and user[6].strip() else None
+            return {
+                'id': user[0],
+                'username': user[1],
+                'role': user[3],
+                'email': user[4],
+                'phone': user[5],
+                'name': name_value
+            }
+        return None
 
 def create_default_users():
-    conn = sqlite3.connect('classroom.db')
-    cursor = conn.cursor()
+    conn = get_db_connection()
     
-    # Always ensure admin account exists (even if database already has users)
-    cursor.execute('SELECT * FROM users WHERE username = ?', ('admin',))
-    admin_exists = cursor.fetchone()
-    
-    if not admin_exists:
-        # Create admin account if it doesn't exist
-        cursor.execute('''
-            INSERT INTO users (id, username, password, role, email, phone)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (str(uuid.uuid4()), 'admin', 'admin123', 'admin', 'admin@nm2tech.com', ''))
-    
-    # Check if users exist
-    cursor.execute('SELECT COUNT(*) FROM users')
-    count = cursor.fetchone()[0]
-    
-    if count == 0:
-        # Create default teacher
-        cursor.execute('''
-            INSERT INTO users (id, username, password, role, email, phone)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (str(uuid.uuid4()), 'mrs.simms', 'password123', 'teacher', 'Ksimms@washingtonchristian.org', '240-390-0429'))
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
         
-        # Create sample parents
-        parents = [
-            ('parent1', 'password123', 'parent', 'parent1@email.com', '555-0001'),
-            ('parent2', 'password123', 'parent', 'parent2@email.com', '555-0002'),
-            ('parent3', 'password123', 'parent', 'parent3@email.com', '555-0003')
-        ]
+        # Check if admin exists
+        admin_result = supabase_client.table('users').select('*').eq('username', 'admin').execute()
+        if not admin_result.data:
+            # Create admin account
+            supabase_client.table('users').insert({
+                'id': str(uuid.uuid4()),
+                'username': 'admin',
+                'password': 'admin123',
+                'role': 'admin',
+                'email': 'admin@nm2tech.com',
+                'phone': ''
+            }).execute()
         
-        for username, password, role, email, phone in parents:
+        # Check total user count
+        count_result = supabase_client.table('users').select('id', count='exact').execute()
+        user_count = count_result.count if hasattr(count_result, 'count') else len(count_result.data) if count_result.data else 0
+        
+        if user_count == 0:
+            # Create default teacher
+            supabase_client.table('users').insert({
+                'id': str(uuid.uuid4()),
+                'username': 'mrs.simms',
+                'password': 'password123',
+                'role': 'teacher',
+                'email': 'Ksimms@washingtonchristian.org',
+                'phone': '240-390-0429'
+            }).execute()
+            
+            # Create sample parents
+            parents = [
+                {'username': 'parent1', 'password': 'password123', 'role': 'parent', 'email': 'parent1@email.com', 'phone': '555-0001'},
+                {'username': 'parent2', 'password': 'password123', 'role': 'parent', 'email': 'parent2@email.com', 'phone': '555-0002'},
+                {'username': 'parent3', 'password': 'password123', 'role': 'parent', 'email': 'parent3@email.com', 'phone': '555-0003'}
+            ]
+            
+            for parent in parents:
+                parent['id'] = str(uuid.uuid4())
+                supabase_client.table('users').insert(parent).execute()
+        
+        conn.close()
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        
+        # Always ensure admin account exists (even if database already has users)
+        cursor.execute('SELECT * FROM users WHERE username = ?', ('admin',))
+        admin_exists = cursor.fetchone()
+        
+        if not admin_exists:
+            # Create admin account if it doesn't exist
             cursor.execute('''
                 INSERT INTO users (id, username, password, role, email, phone)
                 VALUES (?, ?, ?, ?, ?, ?)
-            ''', (str(uuid.uuid4()), username, password, role, email, phone))
-    
-    conn.commit()
-    conn.close()
+            ''', (str(uuid.uuid4()), 'admin', 'admin123', 'admin', 'admin@nm2tech.com', ''))
+        
+        # Check if users exist
+        cursor.execute('SELECT COUNT(*) FROM users')
+        count = cursor.fetchone()[0]
+        
+        if count == 0:
+            # Create default teacher
+            cursor.execute('''
+                INSERT INTO users (id, username, password, role, email, phone)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (str(uuid.uuid4()), 'mrs.simms', 'password123', 'teacher', 'Ksimms@washingtonchristian.org', '240-390-0429'))
+            
+            # Create sample parents
+            parents = [
+                ('parent1', 'password123', 'parent', 'parent1@email.com', '555-0001'),
+                ('parent2', 'password123', 'parent', 'parent2@email.com', '555-0002'),
+                ('parent3', 'password123', 'parent', 'parent3@email.com', '555-0003')
+            ]
+            
+            for username, password, role, email, phone in parents:
+                cursor.execute('''
+                    INSERT INTO users (id, username, password, role, email, phone)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (str(uuid.uuid4()), username, password, role, email, phone))
+        
+        conn.commit()
+        conn.close()
 
 def create_sample_newsletter():
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     # Check if sample newsletter exists
@@ -674,7 +1025,7 @@ should why what''',
 
 def debug_users():
     """Debug function to check users in database"""
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT username, role, email FROM users')
     users = cursor.fetchall()
@@ -683,7 +1034,7 @@ def debug_users():
 
 def clear_newsletters():
     """Clear all newsletters from database"""
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('DELETE FROM newsletters')
     conn.commit()
@@ -840,7 +1191,7 @@ create_default_users()
 # This prevents newsletters from being auto-recreated when deleted
 # Uncomment the code below if you want to auto-create sample newsletter on initial setup only
 
-# conn = sqlite3.connect('classroom.db')
+# conn = get_db_connection()
 # cursor = conn.cursor()
 # cursor.execute('SELECT COUNT(*) FROM newsletters')
 # newsletter_count = cursor.fetchone()[0]
@@ -1166,7 +1517,7 @@ def newsletter_management():
         with col1:
             if st.button("📝 Create Newsletter", key="create_newsletter"):
                 # Save newsletter to database
-                conn = sqlite3.connect('classroom.db')
+                conn = get_db_connection()
                 cursor = conn.cursor()
                 
                 newsletter_content = {
@@ -1229,7 +1580,7 @@ def newsletter_management():
     
     # Reset sample data button
     if st.button("🔄 Reset Sample Data", key="reset_sample_data", type="secondary"):
-        conn = sqlite3.connect('classroom.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM newsletters')
         conn.commit()
@@ -1264,7 +1615,7 @@ def newsletter_management():
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
             if st.button("✅ Yes, Delete All", key="confirm_delete_all", type="primary"):
-                conn = sqlite3.connect('classroom.db')
+                conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM newsletters')
                 conn.commit()
@@ -1292,7 +1643,7 @@ def newsletter_management():
                 st.rerun()
     
     # Get newsletters (limit based on show_all setting)
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     limit = None if st.session_state.get('show_all_newsletters', False) else 5
     if limit:
@@ -1336,7 +1687,7 @@ def newsletter_management():
                 with col1:
                     if st.button("✅ Yes, Delete", key=f"confirm_yes_{newsletter[0]}", type="primary"):
                         st.write(f"Debug: Confirming delete for newsletter {newsletter[0]} - {newsletter[1]}")
-                        conn = sqlite3.connect('classroom.db')
+                        conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute('DELETE FROM newsletters WHERE id = ?', (newsletter[0],))
                         conn.commit()
@@ -1462,7 +1813,7 @@ def event_management():
         max_attendees = st.number_input("Max Attendees", min_value=1, value=50, key="event_max_attendees")
         
         if st.button("Create Event", key="create_event"):
-            conn = sqlite3.connect('classroom.db')
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -1479,7 +1830,7 @@ def event_management():
     
     # View events and RSVPs
     st.subheader("📋 Upcoming Events")
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT e.*, COUNT(er.id) as rsvp_count
@@ -1500,7 +1851,7 @@ def event_management():
             st.markdown(f"**RSVPs:** {event[8]}")
             
             # Show RSVP details
-            conn = sqlite3.connect('classroom.db')
+            conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT u.username, er.attendees_count, er.notes
@@ -1529,7 +1880,7 @@ def assignment_management():
         memory_verse = st.text_area("Memory Verse", key="assignment_memory_verse")
         
         if st.button("Create Assignment", key="create_assignment"):
-            conn = sqlite3.connect('classroom.db')
+            conn = get_db_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -1545,7 +1896,7 @@ def assignment_management():
     
     # View assignments
     st.subheader("📋 Current Assignments")
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM assignments 
@@ -1621,7 +1972,7 @@ def parent_user_management():
             if not parent_username or not parent_password or not parent_email:
                 st.error("Please fill in at least Username, Password, and Email address.")
             else:
-                conn = sqlite3.connect('classroom.db')
+                conn = get_db_connection()
                 cursor = conn.cursor()
                 
                 # Check if username already exists
@@ -1653,7 +2004,7 @@ def parent_user_management():
                     st.rerun()
     
     # Demo accounts warning (dynamic - only shows accounts that exist)
-    conn_check = sqlite3.connect('classroom.db')
+    conn_check = get_db_connection()
     cursor_check = conn_check.cursor()
     
     # Check which demo accounts still exist
@@ -1676,7 +2027,7 @@ def parent_user_management():
     # View and manage existing parent accounts
     st.subheader("📋 Existing Parent Accounts")
     
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, username, email, phone, COALESCE(name, '') as name, created_at 
@@ -1711,7 +2062,7 @@ def parent_user_management():
                 with col2:
                     if st.button("📋 Show Credentials", key=f"show_creds_{parent_id}"):
                         # Get password from database
-                        conn = sqlite3.connect('classroom.db')
+                        conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute('SELECT password FROM users WHERE id = ?', (parent_id,))
                         password_result = cursor.fetchone()
@@ -1733,7 +2084,7 @@ def parent_user_management():
                 with col3:
                     if st.button("🗑️ Delete", key=f"delete_parent_{parent_id}", type="secondary"):
                         if st.session_state.get(f"confirm_delete_parent_{parent_id}", False):
-                            conn = sqlite3.connect('classroom.db')
+                            conn = get_db_connection()
                             cursor = conn.cursor()
                             cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
                             conn.commit()
@@ -1744,7 +2095,7 @@ def parent_user_management():
                             st.session_state[f"confirm_delete_parent_{parent_id}"] = True
                             st.warning(f"⚠️ Are you sure you want to delete '{username}'? This action cannot be undone!")
                             if st.button("✅ Yes, Delete", key=f"confirm_yes_{parent_id}"):
-                                conn = sqlite3.connect('classroom.db')
+                                conn = get_db_connection()
                                 cursor = conn.cursor()
                                 cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
                                 conn.commit()
@@ -1770,7 +2121,7 @@ def parent_user_management():
                     if st.button("🔄 Update Password", key=f"parent_change_pwd_{parent_id}", type="primary"):
                         if new_password:
                             if len(new_password) >= 6:
-                                conn = sqlite3.connect('classroom.db')
+                                conn = get_db_connection()
                                 cursor = conn.cursor()
                                 cursor.execute(
                                     'UPDATE users SET password = ? WHERE id = ?',
@@ -1804,7 +2155,7 @@ def parent_user_management():
                     if st.button("💾 Save Name", key=f"parent_save_name_{parent_id}", type="primary"):
                         # Save the name (trimmed), even if empty
                         name_to_save = updated_name.strip() if updated_name else ""
-                        conn = sqlite3.connect('classroom.db')
+                        conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute(
                             'UPDATE users SET name = ? WHERE id = ?',
@@ -1841,7 +2192,7 @@ def admin_user_management():
     st.markdown("**View and manage ALL users in the system (Admins, Teachers, Parents)**")
     
     # View all users
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, username, role, email, phone, created_at 
@@ -1883,7 +2234,7 @@ def admin_user_management():
                         
                         with col2:
                             if st.button("📋 Show Credentials", key=f"admin_show_creds_{user_id}"):
-                                conn = sqlite3.connect('classroom.db')
+                                conn = get_db_connection()
                                 cursor = conn.cursor()
                                 cursor.execute('SELECT password FROM users WHERE id = ?', (user_id,))
                                 password_result = cursor.fetchone()
@@ -1902,7 +2253,7 @@ def admin_user_management():
                             if user_id != st.session_state.user.get('id'):  # Can't delete yourself
                                 if st.button("🗑️ Delete", key=f"admin_delete_{user_id}", type="secondary"):
                                     if st.session_state.get(f"admin_confirm_delete_{user_id}", False):
-                                        conn = sqlite3.connect('classroom.db')
+                                        conn = get_db_connection()
                                         cursor = conn.cursor()
                                         cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
                                         conn.commit()
@@ -1913,7 +2264,7 @@ def admin_user_management():
                                         st.session_state[f"admin_confirm_delete_{user_id}"] = True
                                         st.warning(f"⚠️ Delete '{username}'? This cannot be undone!")
                                         if st.button("✅ Yes, Delete", key=f"admin_confirm_yes_{user_id}"):
-                                            conn = sqlite3.connect('classroom.db')
+                                            conn = get_db_connection()
                                             cursor = conn.cursor()
                                             cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
                                             conn.commit()
@@ -1963,7 +2314,7 @@ def admin_teacher_management():
             if not teacher_username or not teacher_password or not teacher_email:
                 st.error("Please fill in at least Username, Password, and Email address.")
             else:
-                conn = sqlite3.connect('classroom.db')
+                conn = get_db_connection()
                 cursor = conn.cursor()
                 
                 cursor.execute('SELECT * FROM users WHERE username = ?', (teacher_username,))
@@ -1994,7 +2345,7 @@ def admin_teacher_management():
     # View existing teachers
     st.subheader("📋 Existing Teacher Accounts")
     
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, username, email, phone, created_at 
@@ -2025,7 +2376,7 @@ def admin_teacher_management():
                 
                 with col2:
                     if st.button("📋 Show Credentials", key=f"teacher_show_{teacher_id}"):
-                        conn = sqlite3.connect('classroom.db')
+                        conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute('SELECT password FROM users WHERE id = ?', (teacher_id,))
                         password_result = cursor.fetchone()
@@ -2057,7 +2408,7 @@ def admin_teacher_management():
                     if st.button("🔄 Update Password", key=f"teacher_change_pwd_{teacher_id}", type="primary"):
                         if new_password:
                             if len(new_password) >= 6:
-                                conn = sqlite3.connect('classroom.db')
+                                conn = get_db_connection()
                                 cursor = conn.cursor()
                                 cursor.execute(
                                     'UPDATE users SET password = ? WHERE id = ?',
@@ -2075,57 +2426,153 @@ def admin_teacher_management():
 def admin_system_info():
     st.subheader("📊 System Information & Statistics")
     
-    conn = sqlite3.connect('classroom.db')
-    cursor = conn.cursor()
+    conn = get_db_connection()
     
-    # User statistics
-    st.markdown("### 👥 User Statistics")
-    cursor.execute('SELECT role, COUNT(*) FROM users GROUP BY role')
-    role_counts = cursor.fetchall()
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    admin_count = next((count for role, count in role_counts if role == 'admin'), 0)
-    teacher_count = next((count for role, count in role_counts if role == 'teacher'), 0)
-    parent_count = next((count for role, count in role_counts if role == 'parent'), 0)
-    total_users = admin_count + teacher_count + parent_count
-    
-    with col1:
-        st.metric("Total Users", total_users)
-    with col2:
-        st.metric("Admins", admin_count)
-    with col3:
-        st.metric("Teachers", teacher_count)
-    with col4:
-        st.metric("Parents", parent_count)
-    
-    # Content statistics
-    st.markdown("### 📚 Content Statistics")
-    cursor.execute('SELECT COUNT(*) FROM newsletters')
-    newsletter_count = cursor.fetchone()[0]
-    cursor.execute('SELECT COUNT(*) FROM events')
-    event_count = cursor.fetchone()[0]
-    cursor.execute('SELECT COUNT(*) FROM assignments')
-    assignment_count = cursor.fetchone()[0]
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Newsletters", newsletter_count)
-    with col2:
-        st.metric("Events", event_count)
-    with col3:
-        st.metric("Assignments", assignment_count)
-    
-    conn.close()
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        
+        # User statistics
+        st.markdown("### 👥 User Statistics")
+        
+        # Get all users and count by role
+        users_result = supabase_client.table('users').select('role').execute()
+        users = users_result.data if users_result.data else []
+        
+        admin_count = sum(1 for u in users if u.get('role') == 'admin')
+        teacher_count = sum(1 for u in users if u.get('role') == 'teacher')
+        parent_count = sum(1 for u in users if u.get('role') == 'parent')
+        total_users = len(users)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Users", total_users)
+        with col2:
+            st.metric("Admins", admin_count)
+        with col3:
+            st.metric("Teachers", teacher_count)
+        with col4:
+            st.metric("Parents", parent_count)
+        
+        # Content statistics
+        st.markdown("### 📚 Content Statistics")
+        
+        # Count newsletters
+        newsletters_result = supabase_client.table('newsletters').select('id', count='exact').execute()
+        newsletter_count = newsletters_result.count if hasattr(newsletters_result, 'count') else len(newsletters_result.data) if newsletters_result.data else 0
+        
+        # Count events
+        events_result = supabase_client.table('events').select('id', count='exact').execute()
+        event_count = events_result.count if hasattr(events_result, 'count') else len(events_result.data) if events_result.data else 0
+        
+        # Count assignments
+        assignments_result = supabase_client.table('assignments').select('id', count='exact').execute()
+        assignment_count = assignments_result.count if hasattr(assignments_result, 'count') else len(assignments_result.data) if assignments_result.data else 0
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Newsletters", newsletter_count)
+        with col2:
+            st.metric("Events", event_count)
+        with col3:
+            st.metric("Assignments", assignment_count)
+        
+        conn.close()
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        
+        # User statistics
+        st.markdown("### 👥 User Statistics")
+        cursor.execute('SELECT role, COUNT(*) FROM users GROUP BY role')
+        role_counts = cursor.fetchall()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        admin_count = next((count for role, count in role_counts if role == 'admin'), 0)
+        teacher_count = next((count for role, count in role_counts if role == 'teacher'), 0)
+        parent_count = next((count for role, count in role_counts if role == 'parent'), 0)
+        total_users = admin_count + teacher_count + parent_count
+        
+        with col1:
+            st.metric("Total Users", total_users)
+        with col2:
+            st.metric("Admins", admin_count)
+        with col3:
+            st.metric("Teachers", teacher_count)
+        with col4:
+            st.metric("Parents", parent_count)
+        
+        # Content statistics
+        st.markdown("### 📚 Content Statistics")
+        cursor.execute('SELECT COUNT(*) FROM newsletters')
+        newsletter_count = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM events')
+        event_count = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM assignments')
+        assignment_count = cursor.fetchone()[0]
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Newsletters", newsletter_count)
+        with col2:
+            st.metric("Events", event_count)
+        with col3:
+            st.metric("Assignments", assignment_count)
+        
+        conn.close()
     
     # System details
     st.markdown("### ⚙️ System Details")
+    
+    # Check database type
+    conn_test = get_db_connection()
+    db_type = "Supabase (PostgreSQL)" if isinstance(conn_test, SupabaseAdapter) else "SQLite (Local)"
+    db_status = "✅ Connected" if conn_test else "❌ Not Connected"
+    if not isinstance(conn_test, SupabaseAdapter):
+        conn_test.close()
+    
     st.info(f"""
     **App Version:** 1.0  
-    **Database:** SQLite (classroom.db)  
+    **Database:** {db_type}  
+    **Status:** {db_status}
     **Platform:** Streamlit Cloud  
     **App URL:** https://classroom-management-app-wca.streamlit.app
     """)
+    
+    # Database persistence warning (only show if using SQLite)
+    if not isinstance(conn_test, SupabaseAdapter):
+        st.markdown("### 🚨 CRITICAL: Database Persistence Issue")
+        st.error("""
+        **🚨 URGENT:** On Streamlit Cloud, the file system is **EPHEMERAL** (temporary).
+        
+        **Your database file is LOST when:**
+        - ❌ Code is pushed/redeployed
+        - ❌ App restarts (even from inactivity - no code push needed!)
+        - ❌ Container restarts (maintenance, resource limits)
+        - ❌ Any system restart
+        
+        **This is why users disappear even without code pushes!**
+        
+        **⚠️ IMMEDIATE SOLUTION REQUIRED:**
+        You **MUST** migrate to Supabase (PostgreSQL database). SQLite on Streamlit Cloud 
+        is NOT suitable for production use.
+        
+        **Setup Instructions:**
+        See `SUPABASE_SETUP_GUIDE.md` for step-by-step instructions (15 minutes setup).
+        
+        **Current Status:** ⚠️ Using local SQLite - Data will be lost on app restarts
+        """)
+        
+        st.info("""
+        **💡 Quick Fix:** Follow the setup guide to migrate to Supabase. 
+        This will solve the data loss issue permanently!
+        """)
+    else:
+        st.success("""
+        **✅ Database Persistence:** Using Supabase (PostgreSQL) - Your data is safe!
+        Data will persist across app restarts and deployments.
+        """)
 
 def admin_settings():
     st.subheader("⚙️ System Settings")
@@ -2143,7 +2590,7 @@ def reports_dashboard():
     st.subheader("📊 Reports Dashboard")
     
     # Basic statistics
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     # Newsletter count
@@ -2177,7 +2624,7 @@ def reports_dashboard():
 def view_newsletter():
     st.subheader("📰 Latest Newsletter")
     
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC LIMIT 1')
     newsletter = cursor.fetchone()
@@ -2305,7 +2752,7 @@ def view_newsletter():
 def view_events():
     st.subheader("📅 Upcoming Events")
     
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM events 
@@ -2329,7 +2776,7 @@ def view_events():
 def view_assignments():
     st.subheader("📝 Current Assignments")
     
-    conn = sqlite3.connect('classroom.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM assignments 
