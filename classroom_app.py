@@ -389,10 +389,17 @@ Washington Christian Academy
 def get_parent_emails():
     """Get all parent email addresses from the database"""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT email FROM users WHERE role = "parent" AND email IS NOT NULL AND email != ""')
-    emails = [row[0] for row in cursor.fetchall()]
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        parents_result = supabase_client.table('users').select('email').eq('role', 'parent').not_.is_('email', 'null').neq('email', '').execute()
+        emails = [row.get('email') for row in parents_result.data] if parents_result.data else []
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT email FROM users WHERE role = "parent" AND email IS NOT NULL AND email != ""')
+        emails = [row[0] for row in cursor.fetchall()]
+        conn.close()
     return emails
 
 def test_email_connection():
@@ -965,30 +972,33 @@ def create_default_users():
 
 def create_sample_newsletter():
     conn = get_db_connection()
-    cursor = conn.cursor()
     
-    # Check if sample newsletter exists
-    cursor.execute('SELECT COUNT(*) FROM newsletters')
-    count = cursor.fetchone()[0]
-    
-    # Also check if we've already created a sample newsletter in this session
-    if count == 0 and not st.session_state.get('sample_newsletter_created', False):
-        # Get teacher ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', ('mrs.simms',))
-        teacher = cursor.fetchone()
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
         
-        if teacher:
-            sample_content = {
-                'title': 'OUR CLASSROOM newsletter',
-                'date': 'October 03, 2025',
-                'is_sample': True,
-                'left_column': {
-                    'upcoming_events': '''9/26 - Half day Q1 midterm grading day (school dismisses at 12 noon)
+        # Check if sample newsletter exists
+        newsletter_result = supabase_client.table('newsletters').select('id', count='exact').execute()
+        count = newsletter_result.count if hasattr(newsletter_result, 'count') else len(newsletter_result.data) if newsletter_result.data else 0
+        
+        # Also check if we've already created a sample newsletter in this session
+        if count == 0 and not st.session_state.get('sample_newsletter_created', False):
+            # Get teacher ID
+            teacher_result = supabase_client.table('users').select('id').eq('username', 'mrs.simms').execute()
+            teacher_data = teacher_result.data[0] if teacher_result.data else None
+            
+            if teacher_data:
+                sample_content = {
+                    'title': 'OUR CLASSROOM newsletter',
+                    'date': 'October 03, 2025',
+                    'is_sample': True,
+                    'left_column': {
+                        'upcoming_events': '''9/26 - Half day Q1 midterm grading day (school dismisses at 12 noon)
 9/26 - Day of Fasting, Prayer & Praise
 10/2 - Literacy Night (Next Thursday)
 10/9 - Muffins for Moms
 10/31 - Field Trip (Bible Museum)''',
-                    'learning_snapshot': '''BIBLE/TFT: Unit 1 - The Life of Christ, studying the book of James. TFT: Image Bearers - Who we are as Image Bearers of God. As we learn to respect God and respect others, ourselves, and property.
+                        'learning_snapshot': '''BIBLE/TFT: Unit 1 - The Life of Christ, studying the book of James. TFT: Image Bearers - Who we are as Image Bearers of God. As we learn to respect God and respect others, ourselves, and property.
 
 LANGUAGE ARTS: Handwriting, Skills 1 Activity. Fables and Fairy Tales. We have also read Beauty and the Beast. We are now reading I Am Rosa Parks.
 
@@ -997,49 +1007,128 @@ MATH: Sadlier Math 2 Chapter 2 - Subtraction to 20 (related addition facts and s
 SCIENCE: Cycles of Nature. Seasons, water cycle, life cycles, day & night.
 
 SOCIAL STUDIES: Geography - Maps and landforms.''',
-                    'important_news': '''Happy Fall! Our first Field Trip has been posted for 10/31, see details in upcoming events.
+                        'important_news': '''Happy Fall! Our first Field Trip has been posted for 10/31, see details in upcoming events.
 
 We are excited to announce our first ever Literacy Night at WCA. This year's theme is "Get Caught Reading!" We would love to invite families with students in grades K-4 to attend and experience literature in a fun and hands-on way. RSVP's are on flyers with books to sign and chairs are available for purchase as well as several age-appropriate experiences. All family members are welcome. Please sign up soon!'''
-                },
-                'right_column': {
-                    'word_list': '''sand sang sank
+                    },
+                    'right_column': {
+                        'word_list': '''sand sang sank
 hunt hung hunk
 thin thing think
 should why what''',
-                    'practice_home': '''Read daily to your child for 20 mins as part of our nightly homework assignments.''',
-                    'memory_verse': '''I will exalt you, my God and King; I will praise your name forever and ever. Every day I will praise you and extol your name forever and ever.'''
+                        'practice_home': '''Read daily to your child for 20 mins as part of our nightly homework assignments.''',
+                        'memory_verse': '''I will exalt you, my God and King; I will praise your name forever and ever. Every day I will praise you and extol your name forever and ever.'''
+                    }
                 }
-            }
+                
+                newsletter_data = {
+                    'id': str(uuid.uuid4()),
+                    'title': sample_content['title'],
+                    'content': json.dumps(sample_content),
+                    'date': '2025-10-03',
+                    'teacher_id': teacher_data['id']
+                }
+                
+                supabase_client.table('newsletters').insert(newsletter_data).execute()
+                st.session_state.sample_newsletter_created = True
+        
+        conn.close()
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        
+        # Check if sample newsletter exists
+        cursor.execute('SELECT COUNT(*) FROM newsletters')
+        count = cursor.fetchone()[0]
+        
+        # Also check if we've already created a sample newsletter in this session
+        if count == 0 and not st.session_state.get('sample_newsletter_created', False):
+            # Get teacher ID
+            cursor.execute('SELECT id FROM users WHERE username = ?', ('mrs.simms',))
+            teacher = cursor.fetchone()
             
-            cursor.execute('''
-                INSERT INTO newsletters (id, title, content, date, teacher_id)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (str(uuid.uuid4()), sample_content['title'], json.dumps(sample_content), 
-                  '2025-10-03', teacher[0]))
-            
-            # Mark that we've created a sample newsletter in this session
-            st.session_state.sample_newsletter_created = True
-    
-    conn.commit()
-    conn.close()
+            if teacher:
+                sample_content = {
+                    'title': 'OUR CLASSROOM newsletter',
+                    'date': 'October 03, 2025',
+                    'is_sample': True,
+                    'left_column': {
+                        'upcoming_events': '''9/26 - Half day Q1 midterm grading day (school dismisses at 12 noon)
+9/26 - Day of Fasting, Prayer & Praise
+10/2 - Literacy Night (Next Thursday)
+10/9 - Muffins for Moms
+10/31 - Field Trip (Bible Museum)''',
+                        'learning_snapshot': '''BIBLE/TFT: Unit 1 - The Life of Christ, studying the book of James. TFT: Image Bearers - Who we are as Image Bearers of God. As we learn to respect God and respect others, ourselves, and property.
+
+LANGUAGE ARTS: Handwriting, Skills 1 Activity. Fables and Fairy Tales. We have also read Beauty and the Beast. We are now reading I Am Rosa Parks.
+
+MATH: Sadlier Math 2 Chapter 2 - Subtraction to 20 (related addition facts and strategies). Test next week.
+
+SCIENCE: Cycles of Nature. Seasons, water cycle, life cycles, day & night.
+
+SOCIAL STUDIES: Geography - Maps and landforms.''',
+                        'important_news': '''Happy Fall! Our first Field Trip has been posted for 10/31, see details in upcoming events.
+
+We are excited to announce our first ever Literacy Night at WCA. This year's theme is "Get Caught Reading!" We would love to invite families with students in grades K-4 to attend and experience literature in a fun and hands-on way. RSVP's are on flyers with books to sign and chairs are available for purchase as well as several age-appropriate experiences. All family members are welcome. Please sign up soon!'''
+                    },
+                    'right_column': {
+                        'word_list': '''sand sang sank
+hunt hung hunk
+thin thing think
+should why what''',
+                        'practice_home': '''Read daily to your child for 20 mins as part of our nightly homework assignments.''',
+                        'memory_verse': '''I will exalt you, my God and King; I will praise your name forever and ever. Every day I will praise you and extol your name forever and ever.'''
+                    }
+                }
+                
+                cursor.execute('''
+                    INSERT INTO newsletters (id, title, content, date, teacher_id)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (str(uuid.uuid4()), sample_content['title'], json.dumps(sample_content), 
+                      '2025-10-03', teacher[0]))
+                
+                st.session_state.sample_newsletter_created = True
+        
+        conn.commit()
+        conn.close()
 
 def debug_users():
     """Debug function to check users in database"""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT username, role, email FROM users')
-    users = cursor.fetchall()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        users_result = supabase_client.table('users').select('username, role, email').execute()
+        users_data = users_result.data if users_result.data else []
+        users = [(u.get('username'), u.get('role'), u.get('email')) for u in users_data]
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT username, role, email FROM users')
+        users = cursor.fetchall()
+        conn.close()
     return users
 
 def clear_newsletters():
     """Clear all newsletters from database"""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM newsletters')
-    conn.commit()
-    conn.close()
-    st.success("All newsletters cleared!")
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        try:
+            # Delete all newsletters
+            supabase_client.table('newsletters').delete().neq('id', '').execute()
+            st.success("All newsletters cleared!")
+        except Exception as e:
+            st.error(f"Error clearing newsletters: {str(e)}")
+        conn.close()
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM newsletters')
+        conn.commit()
+        conn.close()
+        st.success("All newsletters cleared!")
 
 def generate_newsletter_pdf(newsletter_data):
     """Generate a PDF version of the newsletter"""
@@ -1518,7 +1607,6 @@ def newsletter_management():
             if st.button("📝 Create Newsletter", key="create_newsletter"):
                 # Save newsletter to database
                 conn = get_db_connection()
-                cursor = conn.cursor()
                 
                 newsletter_content = {
                     'title': title,
@@ -1535,16 +1623,35 @@ def newsletter_management():
                     }
                 }
                 
-                cursor.execute('''
-                    INSERT INTO newsletters (id, title, content, date, teacher_id)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (str(uuid.uuid4()), title, json.dumps(newsletter_content), 
-                      newsletter_date.strftime('%Y-%m-%d'), st.session_state.user['id']))
-                
-                conn.commit()
-                conn.close()
-                st.success("Newsletter created successfully!")
-                st.rerun()
+                # Use Supabase if available
+                if isinstance(conn, SupabaseAdapter):
+                    supabase_client = conn.client
+                    newsletter_data = {
+                        'id': str(uuid.uuid4()),
+                        'title': title,
+                        'content': json.dumps(newsletter_content),
+                        'date': newsletter_date.strftime('%Y-%m-%d'),
+                        'teacher_id': st.session_state.user['id']
+                    }
+                    try:
+                        supabase_client.table('newsletters').insert(newsletter_data).execute()
+                        st.success("Newsletter created successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error creating newsletter: {str(e)}")
+                    conn.close()
+                else:
+                    # SQLite
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO newsletters (id, title, content, date, teacher_id)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (str(uuid.uuid4()), title, json.dumps(newsletter_content), 
+                          newsletter_date.strftime('%Y-%m-%d'), st.session_state.user['id']))
+                    conn.commit()
+                    conn.close()
+                    st.success("Newsletter created successfully!")
+                    st.rerun()
         
         with col2:
             if st.button("📋 Load Sample Data", key="load_sample"):
@@ -1581,13 +1688,25 @@ def newsletter_management():
     # Reset sample data button
     if st.button("🔄 Reset Sample Data", key="reset_sample_data", type="secondary"):
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM newsletters')
-        conn.commit()
-        conn.close()
-        st.session_state.sample_newsletter_created = False
-        st.success("Sample data reset! Refresh the page to see the sample newsletter again.")
-        st.rerun()
+        
+        if isinstance(conn, SupabaseAdapter):
+            supabase_client = conn.client
+            try:
+                supabase_client.table('newsletters').delete().neq('id', '').execute()
+                st.session_state.sample_newsletter_created = False
+                st.success("Sample data reset! Refresh the page to see the sample newsletter again.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error resetting sample data: {str(e)}")
+            conn.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM newsletters')
+            conn.commit()
+            conn.close()
+            st.session_state.sample_newsletter_created = False
+            st.success("Sample data reset! Refresh the page to see the sample newsletter again.")
+            st.rerun()
     
     # Bulk actions
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -1616,13 +1735,25 @@ def newsletter_management():
         with col1:
             if st.button("✅ Yes, Delete All", key="confirm_delete_all", type="primary"):
                 conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM newsletters')
-                conn.commit()
-                conn.close()
-                st.success("All newsletters deleted successfully!")
-                st.session_state.show_delete_confirm = False
-                st.rerun()
+                
+                if isinstance(conn, SupabaseAdapter):
+                    supabase_client = conn.client
+                    try:
+                        supabase_client.table('newsletters').delete().neq('id', '').execute()
+                        st.success("All newsletters deleted successfully!")
+                        st.session_state.show_delete_confirm = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error deleting newsletters: {str(e)}")
+                    conn.close()
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM newsletters')
+                    conn.commit()
+                    conn.close()
+                    st.success("All newsletters deleted successfully!")
+                    st.session_state.show_delete_confirm = False
+                    st.rerun()
         with col2:
             if st.button("❌ Cancel", key="cancel_delete_all"):
                 st.session_state.show_delete_confirm = False
@@ -1644,14 +1775,26 @@ def newsletter_management():
     
     # Get newsletters (limit based on show_all setting)
     conn = get_db_connection()
-    cursor = conn.cursor()
     limit = None if st.session_state.get('show_all_newsletters', False) else 5
-    if limit:
-        cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC LIMIT ?', (limit,))
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        query = supabase_client.table('newsletters').select('*').order('created_at', desc=True)
+        if limit:
+            query = query.limit(limit)
+        newsletters_result = query.execute()
+        newsletters = newsletters_result.data if newsletters_result.data else []
+        # Convert to list of tuples for compatibility: (id, title, content, date, teacher_id, created_at)
+        newsletters = [(n.get('id'), n.get('title'), n.get('content'), n.get('date'), n.get('teacher_id'), n.get('created_at')) for n in newsletters]
+        conn.close()
     else:
-        cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC')
-    newsletters = cursor.fetchall()
-    conn.close()
+        cursor = conn.cursor()
+        if limit:
+            cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC LIMIT ?', (limit,))
+        else:
+            cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC')
+        newsletters = cursor.fetchall()
+        conn.close()
     
     for newsletter in newsletters:
         with st.expander(f"📰 {newsletter[1]} - {newsletter[3]}", expanded=True):
@@ -1688,11 +1831,21 @@ def newsletter_management():
                     if st.button("✅ Yes, Delete", key=f"confirm_yes_{newsletter[0]}", type="primary"):
                         st.write(f"Debug: Confirming delete for newsletter {newsletter[0]} - {newsletter[1]}")
                         conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute('DELETE FROM newsletters WHERE id = ?', (newsletter[0],))
-                        conn.commit()
-                        conn.close()
-                        st.success("Newsletter deleted successfully!")
+                        
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            try:
+                                supabase_client.table('newsletters').delete().eq('id', newsletter[0]).execute()
+                                st.success("Newsletter deleted successfully!")
+                            except Exception as e:
+                                st.error(f"Error deleting newsletter: {str(e)}")
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('DELETE FROM newsletters WHERE id = ?', (newsletter[0],))
+                            conn.commit()
+                            conn.close()
+                            st.success("Newsletter deleted successfully!")
                         # Clear only the specific confirmation state
                         if f'confirm_delete_{newsletter[0]}' in st.session_state:
                             del st.session_state[f'confirm_delete_{newsletter[0]}']
@@ -1814,34 +1967,73 @@ def event_management():
         
         if st.button("Create Event", key="create_event"):
             conn = get_db_connection()
-            cursor = conn.cursor()
             
-            cursor.execute('''
-                INSERT INTO events (id, title, description, event_date, event_time, location, max_attendees, teacher_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (str(uuid.uuid4()), event_title, event_description, 
-                  event_date.strftime('%Y-%m-%d'), event_time.strftime('%H:%M'), 
-                  location, max_attendees, st.session_state.user['id']))
-            
-            conn.commit()
-            conn.close()
-            st.success("Event created successfully!")
-            st.rerun()
+            if isinstance(conn, SupabaseAdapter):
+                supabase_client = conn.client
+                event_data = {
+                    'id': str(uuid.uuid4()),
+                    'title': event_title,
+                    'description': event_description,
+                    'event_date': event_date.strftime('%Y-%m-%d'),
+                    'event_time': event_time.strftime('%H:%M'),
+                    'location': location,
+                    'max_attendees': max_attendees,
+                    'teacher_id': st.session_state.user['id']
+                }
+                try:
+                    supabase_client.table('events').insert(event_data).execute()
+                    st.success("Event created successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error creating event: {str(e)}")
+                conn.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO events (id, title, description, event_date, event_time, location, max_attendees, teacher_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (str(uuid.uuid4()), event_title, event_description, 
+                      event_date.strftime('%Y-%m-%d'), event_time.strftime('%H:%M'), 
+                      location, max_attendees, st.session_state.user['id']))
+                conn.commit()
+                conn.close()
+                st.success("Event created successfully!")
+                st.rerun()
     
     # View events and RSVPs
     st.subheader("📋 Upcoming Events")
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT e.*, COUNT(er.id) as rsvp_count
-        FROM events e
-        LEFT JOIN event_rsvps er ON e.id = er.event_id
-        WHERE e.event_date >= date('now')
-        GROUP BY e.id
-        ORDER BY e.event_date
-    ''')
-    events = cursor.fetchall()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        # Get events with date >= today
+        from datetime import date as date_obj
+        today = date_obj.today().strftime('%Y-%m-%d')
+        events_result = supabase_client.table('events').select('*').gte('event_date', today).order('event_date').execute()
+        events_data = events_result.data if events_result.data else []
+        
+        # Get RSVP counts for each event
+        events = []
+        for event in events_data:
+            rsvp_result = supabase_client.table('event_rsvps').select('id', count='exact').eq('event_id', event['id']).execute()
+            rsvp_count = rsvp_result.count if hasattr(rsvp_result, 'count') else len(rsvp_result.data) if rsvp_result.data else 0
+            # Convert to tuple format: (id, title, description, event_date, event_time, location, max_attendees, teacher_id, created_at, rsvp_count)
+            events.append((event.get('id'), event.get('title'), event.get('description'), event.get('event_date'), 
+                          event.get('event_time'), event.get('location'), event.get('max_attendees'), 
+                          event.get('teacher_id'), event.get('created_at'), rsvp_count))
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT e.*, COUNT(er.id) as rsvp_count
+            FROM events e
+            LEFT JOIN event_rsvps er ON e.id = er.event_id
+            WHERE e.event_date >= date('now')
+            GROUP BY e.id
+            ORDER BY e.event_date
+        ''')
+        events = cursor.fetchall()
+        conn.close()
     
     for event in events:
         with st.expander(f"{event[1]} - {event[3]} at {event[4]}"):
@@ -1852,15 +2044,30 @@ def event_management():
             
             # Show RSVP details
             conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT u.username, er.attendees_count, er.notes
-                FROM event_rsvps er
-                JOIN users u ON er.parent_id = u.id
-                WHERE er.event_id = ?
-            ''', (event[0],))
-            rsvps = cursor.fetchall()
-            conn.close()
+            
+            if isinstance(conn, SupabaseAdapter):
+                supabase_client = conn.client
+                # Get RSVPs for this event
+                rsvps_result = supabase_client.table('event_rsvps').select('parent_id, attendees_count, notes').eq('event_id', event[0]).execute()
+                rsvps_data = rsvps_result.data if rsvps_result.data else []
+                
+                # Get usernames for parent IDs
+                rsvps = []
+                for rsvp in rsvps_data:
+                    user_result = supabase_client.table('users').select('username').eq('id', rsvp['parent_id']).execute()
+                    username = user_result.data[0]['username'] if user_result.data else 'Unknown'
+                    rsvps.append((username, rsvp.get('attendees_count'), rsvp.get('notes')))
+                conn.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT u.username, er.attendees_count, er.notes
+                    FROM event_rsvps er
+                    JOIN users u ON er.parent_id = u.id
+                    WHERE er.event_id = ?
+                ''', (event[0],))
+                rsvps = cursor.fetchall()
+                conn.close()
             
             if rsvps:
                 st.markdown("**RSVP Details:**")
@@ -1881,30 +2088,62 @@ def assignment_management():
         
         if st.button("Create Assignment", key="create_assignment"):
             conn = get_db_connection()
-            cursor = conn.cursor()
             
-            cursor.execute('''
-                INSERT INTO assignments (id, title, description, subject, due_date, word_list, memory_verse, teacher_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (str(uuid.uuid4()), title, description, subject, 
-                  due_date.strftime('%Y-%m-%d'), word_list, memory_verse, st.session_state.user['id']))
-            
-            conn.commit()
-            conn.close()
-            st.success("Assignment created successfully!")
-            st.rerun()
+            if isinstance(conn, SupabaseAdapter):
+                supabase_client = conn.client
+                assignment_data = {
+                    'id': str(uuid.uuid4()),
+                    'title': title,
+                    'description': description,
+                    'subject': subject,
+                    'due_date': due_date.strftime('%Y-%m-%d'),
+                    'word_list': word_list,
+                    'memory_verse': memory_verse,
+                    'teacher_id': st.session_state.user['id']
+                }
+                try:
+                    supabase_client.table('assignments').insert(assignment_data).execute()
+                    st.success("Assignment created successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error creating assignment: {str(e)}")
+                conn.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO assignments (id, title, description, subject, due_date, word_list, memory_verse, teacher_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (str(uuid.uuid4()), title, description, subject, 
+                      due_date.strftime('%Y-%m-%d'), word_list, memory_verse, st.session_state.user['id']))
+                conn.commit()
+                conn.close()
+                st.success("Assignment created successfully!")
+                st.rerun()
     
     # View assignments
     st.subheader("📋 Current Assignments")
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM assignments 
-        WHERE due_date >= date('now')
-        ORDER BY due_date
-    ''')
-    assignments = cursor.fetchall()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        from datetime import date as date_obj
+        today = date_obj.today().strftime('%Y-%m-%d')
+        assignments_result = supabase_client.table('assignments').select('*').gte('due_date', today).order('due_date').execute()
+        assignments = assignments_result.data if assignments_result.data else []
+        # Convert to list of tuples for compatibility
+        assignments = [(a.get('id'), a.get('title'), a.get('description'), a.get('subject'), 
+                       a.get('due_date'), a.get('word_list'), a.get('memory_verse'), 
+                       a.get('teacher_id'), a.get('created_at')) for a in assignments]
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM assignments 
+            WHERE due_date >= date('now')
+            ORDER BY due_date
+        ''')
+        assignments = cursor.fetchall()
+        conn.close()
     
     for assignment in assignments:
         with st.expander(f"{assignment[1]} - Due {assignment[4]}"):
@@ -1973,50 +2212,98 @@ def parent_user_management():
                 st.error("Please fill in at least Username, Password, and Email address.")
             else:
                 conn = get_db_connection()
-                cursor = conn.cursor()
                 
-                # Check if username already exists
-                cursor.execute('SELECT * FROM users WHERE username = ?', (parent_username,))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    st.error(f"Username '{parent_username}' already exists. Please choose a different username.")
-                else:
-                    # Create parent account
-                    parent_id = str(uuid.uuid4())
-                    cursor.execute('''
-                        INSERT INTO users (id, username, password, role, email, phone, name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (parent_id, parent_username, parent_password, 'parent', parent_email, parent_phone or '', parent_name or ''))
+                # Use Supabase if available
+                if isinstance(conn, SupabaseAdapter):
+                    supabase_client = conn.client
                     
-                    conn.commit()
+                    # Check if username already exists
+                    existing_result = supabase_client.table('users').select('*').eq('username', parent_username).execute()
+                    
+                    if existing_result.data and len(existing_result.data) > 0:
+                        st.error(f"Username '{parent_username}' already exists. Please choose a different username.")
+                    else:
+                        # Create parent account
+                        parent_id = str(uuid.uuid4())
+                        parent_data = {
+                            'id': parent_id,
+                            'username': parent_username,
+                            'password': parent_password,
+                            'role': 'parent',
+                            'email': parent_email,
+                            'phone': parent_phone or '',
+                            'name': parent_name or ''
+                        }
+                        
+                        try:
+                            supabase_client.table('users').insert(parent_data).execute()
+                            st.success(f"✅ Parent account created successfully!")
+                            st.info(f"""
+                            **Login Credentials:**
+                            - Username: `{parent_username}`
+                            - Password: `{parent_password}`
+                            - Email: {parent_email}
+                            
+                            Share these credentials with the parent along with the app link:
+                            https://classroom-management-app-wca.streamlit.app
+                            """)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error creating parent account: {str(e)}")
+                    
                     conn.close()
-                    st.success(f"✅ Parent account created successfully!")
-                    st.info(f"""
-                    **Login Credentials:**
-                    - Username: `{parent_username}`
-                    - Password: `{parent_password}`
-                    - Email: {parent_email}
+                else:
+                    # SQLite
+                    cursor = conn.cursor()
                     
-                    Share these credentials with the parent along with the app link:
-                    https://classroom-management-app-wca.streamlit.app
-                    """)
-                    st.rerun()
+                    # Check if username already exists
+                    cursor.execute('SELECT * FROM users WHERE username = ?', (parent_username,))
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        st.error(f"Username '{parent_username}' already exists. Please choose a different username.")
+                    else:
+                        # Create parent account
+                        parent_id = str(uuid.uuid4())
+                        cursor.execute('''
+                            INSERT INTO users (id, username, password, role, email, phone, name)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (parent_id, parent_username, parent_password, 'parent', parent_email, parent_phone or '', parent_name or ''))
+                        
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Parent account created successfully!")
+                        st.info(f"""
+                        **Login Credentials:**
+                        - Username: `{parent_username}`
+                        - Password: `{parent_password}`
+                        - Email: {parent_email}
+                        
+                        Share these credentials with the parent along with the app link:
+                        https://classroom-management-app-wca.streamlit.app
+                        """)
+                        st.rerun()
     
     # Demo accounts warning (dynamic - only shows accounts that exist)
     conn_check = get_db_connection()
-    cursor_check = conn_check.cursor()
     
-    # Check which demo accounts still exist
     demo_accounts = ['parent1', 'parent2', 'parent3']
     existing_demo_accounts = []
     
-    for demo_account in demo_accounts:
-        cursor_check.execute('SELECT username FROM users WHERE username = ? AND role = "parent"', (demo_account,))
-        if cursor_check.fetchone():
-            existing_demo_accounts.append(demo_account)
-    
-    conn_check.close()
+    if isinstance(conn_check, SupabaseAdapter):
+        supabase_client = conn_check.client
+        for demo_account in demo_accounts:
+            result = supabase_client.table('users').select('username').eq('username', demo_account).eq('role', 'parent').execute()
+            if result.data and len(result.data) > 0:
+                existing_demo_accounts.append(demo_account)
+        conn_check.close()
+    else:
+        cursor_check = conn_check.cursor()
+        for demo_account in demo_accounts:
+            cursor_check.execute('SELECT username FROM users WHERE username = ? AND role = "parent"', (demo_account,))
+            if cursor_check.fetchone():
+                existing_demo_accounts.append(demo_account)
+        conn_check.close()
     
     # Only show warning if demo accounts exist
     if existing_demo_accounts:
@@ -2028,15 +2315,26 @@ def parent_user_management():
     st.subheader("📋 Existing Parent Accounts")
     
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, username, email, phone, COALESCE(name, '') as name, created_at 
-        FROM users 
-        WHERE role = "parent" 
-        ORDER BY created_at DESC
-    ''')
-    parents = cursor.fetchall()
-    conn.close()
+    
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        parents_result = supabase_client.table('users').select('id, username, email, phone, name, created_at').eq('role', 'parent').order('created_at', desc=True).execute()
+        parents = parents_result.data if parents_result.data else []
+        # Convert to list of tuples for compatibility (handling None name values)
+        parents = [(p.get('id'), p.get('username'), p.get('email'), p.get('phone'), p.get('name') or '', p.get('created_at')) for p in parents]
+        conn.close()
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, username, email, phone, COALESCE(name, '') as name, created_at 
+            FROM users 
+            WHERE role = "parent" 
+            ORDER BY created_at DESC
+        ''')
+        parents = cursor.fetchall()
+        conn.close()
     
     if not parents:
         st.info("No parent accounts created yet. Use the form above to add parent accounts.")
@@ -2063,11 +2361,18 @@ def parent_user_management():
                     if st.button("📋 Show Credentials", key=f"show_creds_{parent_id}"):
                         # Get password from database
                         conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute('SELECT password FROM users WHERE id = ?', (parent_id,))
-                        password_result = cursor.fetchone()
-                        password = password_result[0] if password_result else "Password not found"
-                        conn.close()
+                        
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            password_result = supabase_client.table('users').select('password').eq('id', parent_id).execute()
+                            password = password_result.data[0].get('password') if password_result.data else "Password not found"
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('SELECT password FROM users WHERE id = ?', (parent_id,))
+                            password_result = cursor.fetchone()
+                            password = password_result[0] if password_result else "Password not found"
+                            conn.close()
                         
                         display_title = name if name else username
                         st.info(f"""
@@ -2085,23 +2390,45 @@ def parent_user_management():
                     if st.button("🗑️ Delete", key=f"delete_parent_{parent_id}", type="secondary"):
                         if st.session_state.get(f"confirm_delete_parent_{parent_id}", False):
                             conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
-                            conn.commit()
-                            conn.close()
-                            st.success("Parent account deleted successfully!")
-                            st.rerun()
+                            
+                            if isinstance(conn, SupabaseAdapter):
+                                supabase_client = conn.client
+                                try:
+                                    supabase_client.table('users').delete().eq('id', parent_id).execute()
+                                    st.success("Parent account deleted successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error deleting parent: {str(e)}")
+                                conn.close()
+                            else:
+                                cursor = conn.cursor()
+                                cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
+                                conn.commit()
+                                conn.close()
+                                st.success("Parent account deleted successfully!")
+                                st.rerun()
                         else:
                             st.session_state[f"confirm_delete_parent_{parent_id}"] = True
                             st.warning(f"⚠️ Are you sure you want to delete '{username}'? This action cannot be undone!")
                             if st.button("✅ Yes, Delete", key=f"confirm_yes_{parent_id}"):
                                 conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
-                                conn.commit()
-                                conn.close()
-                                st.success("Parent account deleted!")
-                                st.rerun()
+                                
+                                if isinstance(conn, SupabaseAdapter):
+                                    supabase_client = conn.client
+                                    try:
+                                        supabase_client.table('users').delete().eq('id', parent_id).execute()
+                                        st.success("Parent account deleted!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error deleting parent: {str(e)}")
+                                    conn.close()
+                                else:
+                                    cursor = conn.cursor()
+                                    cursor.execute('DELETE FROM users WHERE id = ?', (parent_id,))
+                                    conn.commit()
+                                    conn.close()
+                                    st.success("Parent account deleted!")
+                                    st.rerun()
                 
                 # Password change section
                 st.markdown("---")
@@ -2122,15 +2449,26 @@ def parent_user_management():
                         if new_password:
                             if len(new_password) >= 6:
                                 conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    'UPDATE users SET password = ? WHERE id = ?',
-                                    (new_password, parent_id)
-                                )
-                                conn.commit()
-                                conn.close()
-                                st.success(f"✅ Password updated successfully for {username}!")
-                                st.rerun()
+                                
+                                if isinstance(conn, SupabaseAdapter):
+                                    supabase_client = conn.client
+                                    try:
+                                        supabase_client.table('users').update({'password': new_password}).eq('id', parent_id).execute()
+                                        st.success(f"✅ Password updated successfully for {username}!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error updating password: {str(e)}")
+                                    conn.close()
+                                else:
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        'UPDATE users SET password = ? WHERE id = ?',
+                                        (new_password, parent_id)
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    st.success(f"✅ Password updated successfully for {username}!")
+                                    st.rerun()
                             else:
                                 st.error("Password must be at least 6 characters long.")
                         else:
@@ -2156,20 +2494,36 @@ def parent_user_management():
                         # Save the name (trimmed), even if empty
                         name_to_save = updated_name.strip() if updated_name else ""
                         conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            'UPDATE users SET name = ? WHERE id = ?',
-                            (name_to_save, parent_id)
-                        )
-                        conn.commit()
-                        conn.close()
-                        if name_to_save:
-                            st.success(f"✅ Parent name updated successfully for {username}!")
-                            st.info("ℹ️ The welcome message will now show this name when the parent logs in.")
+                        
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            try:
+                                supabase_client.table('users').update({'name': name_to_save}).eq('id', parent_id).execute()
+                                if name_to_save:
+                                    st.success(f"✅ Parent name updated successfully for {username}!")
+                                    st.info("ℹ️ The welcome message will now show this name when the parent logs in.")
+                                else:
+                                    st.success(f"✅ Parent name cleared for {username}!")
+                                    st.info("ℹ️ The welcome message will now use email or username as fallback.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error updating name: {str(e)}")
+                            conn.close()
                         else:
-                            st.success(f"✅ Parent name cleared for {username}!")
-                            st.info("ℹ️ The welcome message will now use email or username as fallback.")
-                        st.rerun()
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                'UPDATE users SET name = ? WHERE id = ?',
+                                (name_to_save, parent_id)
+                            )
+                            conn.commit()
+                            conn.close()
+                            if name_to_save:
+                                st.success(f"✅ Parent name updated successfully for {username}!")
+                                st.info("ℹ️ The welcome message will now show this name when the parent logs in.")
+                            else:
+                                st.success(f"✅ Parent name cleared for {username}!")
+                                st.info("ℹ️ The welcome message will now use email or username as fallback.")
+                            st.rerun()
     
     # Bulk export credentials
     if parents:
@@ -2193,14 +2547,23 @@ def admin_user_management():
     
     # View all users
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, username, role, email, phone, created_at 
-        FROM users 
-        ORDER BY role, created_at DESC
-    ''')
-    all_users = cursor.fetchall()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        users_result = supabase_client.table('users').select('id, username, role, email, phone, created_at').order('role').order('created_at', desc=True).execute()
+        users_data = users_result.data if users_result.data else []
+        # Convert to list of tuples for compatibility
+        all_users = [(u.get('id'), u.get('username'), u.get('role'), u.get('email'), u.get('phone'), u.get('created_at')) for u in users_data]
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, username, role, email, phone, created_at 
+            FROM users 
+            ORDER BY role, created_at DESC
+        ''')
+        all_users = cursor.fetchall()
+        conn.close()
     
     if not all_users:
         st.info("No users found in the system.")
@@ -2235,11 +2598,18 @@ def admin_user_management():
                         with col2:
                             if st.button("📋 Show Credentials", key=f"admin_show_creds_{user_id}"):
                                 conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute('SELECT password FROM users WHERE id = ?', (user_id,))
-                                password_result = cursor.fetchone()
-                                password = password_result[0] if password_result else "Not found"
-                                conn.close()
+                                
+                                if isinstance(conn, SupabaseAdapter):
+                                    supabase_client = conn.client
+                                    password_result = supabase_client.table('users').select('password').eq('id', user_id).execute()
+                                    password = password_result.data[0].get('password') if password_result.data else "Password not found"
+                                    conn.close()
+                                else:
+                                    cursor = conn.cursor()
+                                    cursor.execute('SELECT password FROM users WHERE id = ?', (user_id,))
+                                    password_result = cursor.fetchone()
+                                    password = password_result[0] if password_result else "Not found"
+                                    conn.close()
                                 
                                 st.info(f"""
                                 **Login Credentials:**
@@ -2254,23 +2624,45 @@ def admin_user_management():
                                 if st.button("🗑️ Delete", key=f"admin_delete_{user_id}", type="secondary"):
                                     if st.session_state.get(f"admin_confirm_delete_{user_id}", False):
                                         conn = get_db_connection()
-                                        cursor = conn.cursor()
-                                        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
-                                        conn.commit()
-                                        conn.close()
-                                        st.success(f"User {username} deleted successfully!")
-                                        st.rerun()
+                                        
+                                        if isinstance(conn, SupabaseAdapter):
+                                            supabase_client = conn.client
+                                            try:
+                                                supabase_client.table('users').delete().eq('id', user_id).execute()
+                                                st.success(f"User {username} deleted successfully!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error deleting user: {str(e)}")
+                                            conn.close()
+                                        else:
+                                            cursor = conn.cursor()
+                                            cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+                                            conn.commit()
+                                            conn.close()
+                                            st.success(f"User {username} deleted successfully!")
+                                            st.rerun()
                                     else:
                                         st.session_state[f"admin_confirm_delete_{user_id}"] = True
                                         st.warning(f"⚠️ Delete '{username}'? This cannot be undone!")
                                         if st.button("✅ Yes, Delete", key=f"admin_confirm_yes_{user_id}"):
                                             conn = get_db_connection()
-                                            cursor = conn.cursor()
-                                            cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
-                                            conn.commit()
-                                            conn.close()
-                                            st.success("User deleted!")
-                                            st.rerun()
+                                            
+                                            if isinstance(conn, SupabaseAdapter):
+                                                supabase_client = conn.client
+                                                try:
+                                                    supabase_client.table('users').delete().eq('id', user_id).execute()
+                                                    st.success("User deleted!")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Error deleting user: {str(e)}")
+                                                conn.close()
+                                            else:
+                                                cursor = conn.cursor()
+                                                cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+                                                conn.commit()
+                                                conn.close()
+                                                st.success("User deleted!")
+                                                st.rerun()
 
 def admin_teacher_management():
     st.subheader("👩‍🏫 Teacher Account Management")
@@ -2429,11 +2821,18 @@ def admin_teacher_management():
                 with col2:
                     if st.button("📋 Show Credentials", key=f"teacher_show_{teacher_id}"):
                         conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute('SELECT password FROM users WHERE id = ?', (teacher_id,))
-                        password_result = cursor.fetchone()
-                        password = password_result[0] if password_result else "Not found"
-                        conn.close()
+                        
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            password_result = supabase_client.table('users').select('password').eq('id', teacher_id).execute()
+                            password = password_result.data[0].get('password') if password_result.data else "Password not found"
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('SELECT password FROM users WHERE id = ?', (teacher_id,))
+                            password_result = cursor.fetchone()
+                            password = password_result[0] if password_result else "Not found"
+                            conn.close()
                         
                         st.info(f"""
                         **Login Credentials:**
@@ -2461,15 +2860,26 @@ def admin_teacher_management():
                         if new_password:
                             if len(new_password) >= 6:
                                 conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    'UPDATE users SET password = ? WHERE id = ?',
-                                    (new_password, teacher_id)
-                                )
-                                conn.commit()
-                                conn.close()
-                                st.success(f"✅ Password updated successfully for {username}!")
-                                st.rerun()
+                                
+                                if isinstance(conn, SupabaseAdapter):
+                                    supabase_client = conn.client
+                                    try:
+                                        supabase_client.table('users').update({'password': new_password}).eq('id', teacher_id).execute()
+                                        st.success(f"✅ Password updated successfully for {username}!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error updating password: {str(e)}")
+                                    conn.close()
+                                else:
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        'UPDATE users SET password = ? WHERE id = ?',
+                                        (new_password, teacher_id)
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    st.success(f"✅ Password updated successfully for {username}!")
+                                    st.rerun()
                             else:
                                 st.error("Password must be at least 6 characters long.")
                         else:
@@ -2643,25 +3053,47 @@ def reports_dashboard():
     
     # Basic statistics
     conn = get_db_connection()
-    cursor = conn.cursor()
     
-    # Newsletter count
-    cursor.execute('SELECT COUNT(*) FROM newsletters')
-    newsletter_count = cursor.fetchone()[0]
-    
-    # Event count
-    cursor.execute('SELECT COUNT(*) FROM events')
-    event_count = cursor.fetchone()[0]
-    
-    # Assignment count
-    cursor.execute('SELECT COUNT(*) FROM assignments')
-    assignment_count = cursor.fetchone()[0]
-    
-    # RSVP count
-    cursor.execute('SELECT COUNT(*) FROM event_rsvps')
-    rsvp_count = cursor.fetchone()[0]
-    
-    conn.close()
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        
+        # Newsletter count
+        newsletter_result = supabase_client.table('newsletters').select('id', count='exact').execute()
+        newsletter_count = newsletter_result.count if hasattr(newsletter_result, 'count') else len(newsletter_result.data) if newsletter_result.data else 0
+        
+        # Event count
+        event_result = supabase_client.table('events').select('id', count='exact').execute()
+        event_count = event_result.count if hasattr(event_result, 'count') else len(event_result.data) if event_result.data else 0
+        
+        # Assignment count
+        assignment_result = supabase_client.table('assignments').select('id', count='exact').execute()
+        assignment_count = assignment_result.count if hasattr(assignment_result, 'count') else len(assignment_result.data) if assignment_result.data else 0
+        
+        # RSVP count
+        rsvp_result = supabase_client.table('event_rsvps').select('id', count='exact').execute()
+        rsvp_count = rsvp_result.count if hasattr(rsvp_result, 'count') else len(rsvp_result.data) if rsvp_result.data else 0
+        
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        
+        # Newsletter count
+        cursor.execute('SELECT COUNT(*) FROM newsletters')
+        newsletter_count = cursor.fetchone()[0]
+        
+        # Event count
+        cursor.execute('SELECT COUNT(*) FROM events')
+        event_count = cursor.fetchone()[0]
+        
+        # Assignment count
+        cursor.execute('SELECT COUNT(*) FROM assignments')
+        assignment_count = cursor.fetchone()[0]
+        
+        # RSVP count
+        cursor.execute('SELECT COUNT(*) FROM event_rsvps')
+        rsvp_count = cursor.fetchone()[0]
+        
+        conn.close()
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -2677,10 +3109,22 @@ def view_newsletter():
     st.subheader("📰 Latest Newsletter")
     
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC LIMIT 1')
-    newsletter = cursor.fetchone()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        newsletter_result = supabase_client.table('newsletters').select('*').order('created_at', desc=True).limit(1).execute()
+        newsletter_data = newsletter_result.data[0] if newsletter_result.data else None
+        if newsletter_data:
+            newsletter = (newsletter_data.get('id'), newsletter_data.get('title'), newsletter_data.get('content'), 
+                         newsletter_data.get('date'), newsletter_data.get('teacher_id'), newsletter_data.get('created_at'))
+        else:
+            newsletter = None
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM newsletters ORDER BY created_at DESC LIMIT 1')
+        newsletter = cursor.fetchone()
+        conn.close()
     
     if newsletter:
         content = json.loads(newsletter[2])
@@ -2805,14 +3249,27 @@ def view_events():
     st.subheader("📅 Upcoming Events")
     
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM events 
-        WHERE event_date >= date('now')
-        ORDER BY event_date
-    ''')
-    events = cursor.fetchall()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        from datetime import date as date_obj
+        today = date_obj.today().strftime('%Y-%m-%d')
+        events_result = supabase_client.table('events').select('*').gte('event_date', today).order('event_date').execute()
+        events_data = events_result.data if events_result.data else []
+        # Convert to list of tuples for compatibility
+        events = [(e.get('id'), e.get('title'), e.get('description'), e.get('event_date'), 
+                  e.get('event_time'), e.get('location'), e.get('max_attendees'), 
+                  e.get('teacher_id'), e.get('created_at')) for e in events_data]
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM events 
+            WHERE event_date >= date('now')
+            ORDER BY event_date
+        ''')
+        events = cursor.fetchall()
+        conn.close()
     
     for event in events:
         with st.expander(f"{event[1]} - {event[3]} at {event[4]}"):
@@ -2829,14 +3286,27 @@ def view_assignments():
     st.subheader("📝 Current Assignments")
     
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM assignments 
-        WHERE due_date >= date('now')
-        ORDER BY due_date
-    ''')
-    assignments = cursor.fetchall()
-    conn.close()
+    
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        from datetime import date as date_obj
+        today = date_obj.today().strftime('%Y-%m-%d')
+        assignments_result = supabase_client.table('assignments').select('*').gte('due_date', today).order('due_date').execute()
+        assignments_data = assignments_result.data if assignments_result.data else []
+        # Convert to list of tuples for compatibility
+        assignments = [(a.get('id'), a.get('title'), a.get('description'), a.get('subject'), 
+                       a.get('due_date'), a.get('word_list'), a.get('memory_verse'), 
+                       a.get('teacher_id'), a.get('created_at')) for a in assignments_data]
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM assignments 
+            WHERE due_date >= date('now')
+            ORDER BY due_date
+        ''')
+        assignments = cursor.fetchall()
+        conn.close()
     
     for assignment in assignments:
         with st.expander(f"{assignment[1]} - Due {assignment[4]}"):
