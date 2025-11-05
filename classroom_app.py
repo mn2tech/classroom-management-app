@@ -2315,46 +2315,98 @@ def admin_teacher_management():
                 st.error("Please fill in at least Username, Password, and Email address.")
             else:
                 conn = get_db_connection()
-                cursor = conn.cursor()
                 
-                cursor.execute('SELECT * FROM users WHERE username = ?', (teacher_username,))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    st.error(f"Username '{teacher_username}' already exists.")
-                else:
-                    teacher_id = str(uuid.uuid4())
-                    cursor.execute('''
-                        INSERT INTO users (id, username, password, role, email, phone)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (teacher_id, teacher_username, teacher_password, 'teacher', teacher_email, teacher_phone or ''))
+                # Use Supabase if available
+                if isinstance(conn, SupabaseAdapter):
+                    supabase_client = conn.client
                     
-                    conn.commit()
+                    # Check if username already exists
+                    existing_result = supabase_client.table('users').select('*').eq('username', teacher_username).execute()
+                    
+                    if existing_result.data and len(existing_result.data) > 0:
+                        st.error(f"Username '{teacher_username}' already exists.")
+                    else:
+                        # Create teacher account
+                        teacher_id = str(uuid.uuid4())
+                        teacher_data = {
+                            'id': teacher_id,
+                            'username': teacher_username,
+                            'password': teacher_password,
+                            'role': 'teacher',
+                            'email': teacher_email,
+                            'phone': teacher_phone or '',
+                            'name': teacher_name or ''
+                        }
+                        
+                        try:
+                            supabase_client.table('users').insert(teacher_data).execute()
+                            st.success(f"✅ Teacher account created successfully!")
+                            st.info(f"""
+                            **Login Credentials:**
+                            - Username: `{teacher_username}`
+                            - Password: `{teacher_password}`
+                            - Email: {teacher_email}
+                            - Role: Teacher
+                            - App: https://classroom-management-app-wca.streamlit.app
+                            """)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error creating teacher account: {str(e)}")
+                    
                     conn.close()
-                    st.success(f"✅ Teacher account created successfully!")
-                    st.info(f"""
-                    **Login Credentials:**
-                    - Username: `{teacher_username}`
-                    - Password: `{teacher_password}`
-                    - Email: {teacher_email}
-                    - Role: Teacher
-                    - App: https://classroom-management-app-wca.streamlit.app
-                    """)
-                    st.rerun()
+                else:
+                    # SQLite
+                    cursor = conn.cursor()
+                    
+                    cursor.execute('SELECT * FROM users WHERE username = ?', (teacher_username,))
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        st.error(f"Username '{teacher_username}' already exists.")
+                    else:
+                        teacher_id = str(uuid.uuid4())
+                        cursor.execute('''
+                            INSERT INTO users (id, username, password, role, email, phone, name)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (teacher_id, teacher_username, teacher_password, 'teacher', teacher_email, teacher_phone or '', teacher_name or ''))
+                        
+                        conn.commit()
+                        conn.close()
+                        st.success(f"✅ Teacher account created successfully!")
+                        st.info(f"""
+                        **Login Credentials:**
+                        - Username: `{teacher_username}`
+                        - Password: `{teacher_password}`
+                        - Email: {teacher_email}
+                        - Role: Teacher
+                        - App: https://classroom-management-app-wca.streamlit.app
+                        """)
+                        st.rerun()
     
     # View existing teachers
     st.subheader("📋 Existing Teacher Accounts")
     
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, username, email, phone, created_at 
-        FROM users 
-        WHERE role = "teacher" 
-        ORDER BY created_at DESC
-    ''')
-    teachers = cursor.fetchall()
-    conn.close()
+    
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        teachers_result = supabase_client.table('users').select('id, username, email, phone, created_at').eq('role', 'teacher').order('created_at', desc=True).execute()
+        teachers = teachers_result.data if teachers_result.data else []
+        # Convert to list of tuples for compatibility
+        teachers = [(t.get('id'), t.get('username'), t.get('email'), t.get('phone'), t.get('created_at')) for t in teachers]
+        conn.close()
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, username, email, phone, created_at 
+            FROM users 
+            WHERE role = "teacher" 
+            ORDER BY created_at DESC
+        ''')
+        teachers = cursor.fetchall()
+        conn.close()
     
     if not teachers:
         st.info("No teacher accounts created yet.")
