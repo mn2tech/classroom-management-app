@@ -291,6 +291,20 @@ def init_database():
         )
     ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_activity (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            username TEXT,
+            role TEXT,
+            activity_type TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -881,6 +895,66 @@ def authenticate_user(username: str, password: str) -> Optional[Dict]:
             }
         return None
 
+def log_user_activity(user_id: str, username: str, role: str, activity_type: str = "login"):
+    """Log user activity (login, logout, etc.) to the database"""
+    try:
+        conn = get_db_connection()
+        activity_id = str(uuid.uuid4())
+        
+        # Try to get IP address and user agent from Streamlit headers
+        ip_address = "Unknown"
+        user_agent = "Unknown"
+        
+        try:
+            # Streamlit doesn't directly expose request headers, but we can try to get them
+            # For now, we'll use a placeholder - in production, you might want to use
+            # a custom component or middleware to capture this
+            if hasattr(st, 'request') and hasattr(st.request, 'headers'):
+                ip_address = st.request.headers.get('X-Forwarded-For', 'Unknown')
+                user_agent = st.request.headers.get('User-Agent', 'Unknown')
+        except:
+            pass
+        
+        activity_data = {
+            'id': activity_id,
+            'user_id': user_id,
+            'username': username,
+            'role': role,
+            'activity_type': activity_type,
+            'ip_address': ip_address,
+            'user_agent': user_agent
+        }
+        
+        if isinstance(conn, SupabaseAdapter):
+            # Supabase insert
+            supabase_client = conn.client
+            try:
+                supabase_client.table('user_activity').insert(activity_data).execute()
+            except Exception as e:
+                # Table might not exist in Supabase yet - that's okay, we'll handle it
+                pass
+            conn.close()
+        else:
+            # SQLite insert
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO user_activity (id, user_id, username, role, activity_type, ip_address, user_agent)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                activity_data['id'],
+                activity_data['user_id'],
+                activity_data['username'],
+                activity_data['role'],
+                activity_data['activity_type'],
+                activity_data['ip_address'],
+                activity_data['user_agent']
+            ))
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        # Silently fail - don't break login if logging fails
+        pass
+
 def create_default_users():
     conn = get_db_connection()
     
@@ -1305,6 +1379,8 @@ def main():
         if st.sidebar.button("Login"):
             user = authenticate_user(username, password)
             if user:
+                # Log user login activity
+                log_user_activity(user['id'], user['username'], user['role'], "login")
                 st.session_state.user = user
                 st.sidebar.success(f"Logged in as {user['role']}: {user['username']}")
                 st.rerun()
@@ -1416,6 +1492,10 @@ def main():
         st.sidebar.info(f"Role: {user['role']}")
     
     if st.sidebar.button("Logout"):
+        # Log user logout activity
+        if 'user' in st.session_state:
+            user = st.session_state.user
+            log_user_activity(user['id'], user['username'], user['role'], "logout")
         del st.session_state.user
         st.rerun()
     
@@ -1447,8 +1527,8 @@ def admin_dashboard():
     st.markdown("**Full System Management - Manage Teachers, Parents, and Everything**")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "⚙️ Settings"
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "👥 User Management", "👩‍🏫 Teachers", "👨‍👩‍👧‍👦 Parents", "📰 Newsletters", "📊 System Info", "📊 User Activity", "⚙️ Settings"
     ])
     
     with tab1:
@@ -1467,6 +1547,9 @@ def admin_dashboard():
         admin_system_info()
     
     with tab6:
+        admin_user_activity()
+    
+    with tab7:
         admin_settings()
     
     # Footer
@@ -3035,6 +3118,159 @@ def admin_system_info():
         **✅ Database Persistence:** Using Supabase (PostgreSQL) - Your data is safe!
         Data will persist across app restarts and deployments.
         """)
+
+def admin_user_activity():
+    st.subheader("📊 User Activity & Login Tracking")
+    st.markdown("**Track all user logins and activity in the system**")
+    
+    conn = get_db_connection()
+    
+    # Use Supabase if available
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        
+        try:
+            # Get all user activity, ordered by most recent first
+            activity_result = supabase_client.table('user_activity').select('*').order('created_at', desc=True).limit(1000).execute()
+            activities = activity_result.data if activity_result.data else []
+            conn.close()
+        except Exception as e:
+            # Table might not exist in Supabase yet
+            st.warning(f"⚠️ User activity table not found in Supabase. Please create it using the SQL script in the setup guide.")
+            st.info("""
+            **To enable user activity tracking in Supabase:**
+            1. Go to Supabase SQL Editor
+            2. Run this SQL:
+            ```sql
+            CREATE TABLE IF NOT EXISTS user_activity (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                username TEXT,
+                role TEXT,
+                activity_type TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
+            ```
+            """)
+            conn.close()
+            return
+    else:
+        # SQLite
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT id, user_id, username, role, activity_type, ip_address, user_agent, created_at
+                FROM user_activity
+                ORDER BY created_at DESC
+                LIMIT 1000
+            ''')
+            activities = cursor.fetchall()
+            conn.close()
+        except sqlite3.OperationalError:
+            st.warning("⚠️ User activity table not found. It will be created automatically on next app restart.")
+            conn.close()
+            return
+    
+    if not activities:
+        st.info("📭 No user activity logged yet. Activity will appear here after users log in.")
+        return
+    
+    # Statistics
+    st.markdown("### 📈 Activity Statistics")
+    
+    total_logins = len([a for a in activities if (isinstance(a, dict) and a.get('activity_type') == 'login') or (isinstance(a, tuple) and len(a) > 4 and a[4] == 'login')])
+    
+    # Count unique users
+    unique_users = set()
+    for activity in activities:
+        if isinstance(activity, dict):
+            unique_users.add(activity.get('username', ''))
+        else:
+            unique_users.add(activity[2] if len(activity) > 2 else '')
+    
+    # Count by role
+    role_counts = {}
+    for activity in activities:
+        if isinstance(activity, dict):
+            role = activity.get('role', 'Unknown')
+        else:
+            role = activity[3] if len(activity) > 3 else 'Unknown'
+        role_counts[role] = role_counts.get(role, 0) + 1
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Activities", len(activities))
+    with col2:
+        st.metric("Total Logins", total_logins)
+    with col3:
+        st.metric("Unique Users", len(unique_users))
+    with col4:
+        st.metric("Most Active Role", max(role_counts.items(), key=lambda x: x[1])[0] if role_counts else "N/A")
+    
+    st.markdown("---")
+    st.markdown("### 📋 Recent Activity Log")
+    
+    # Filter options
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        filter_role = st.selectbox("Filter by Role", ["All"] + list(set(role_counts.keys())))
+    with col2:
+        filter_activity = st.selectbox("Filter by Activity", ["All", "login", "logout"])
+    with col3:
+        limit = st.number_input("Show Last N Records", min_value=10, max_value=1000, value=100, step=10)
+    
+    # Filter activities
+    filtered_activities = activities[:limit]
+    if filter_role != "All":
+        filtered_activities = [a for a in filtered_activities 
+                              if (isinstance(a, dict) and a.get('role') == filter_role) or 
+                                 (isinstance(a, tuple) and len(a) > 3 and a[3] == filter_role)]
+    if filter_activity != "All":
+        filtered_activities = [a for a in filtered_activities 
+                              if (isinstance(a, dict) and a.get('activity_type') == filter_activity) or 
+                                 (isinstance(a, tuple) and len(a) > 4 and a[4] == filter_activity)]
+    
+    if not filtered_activities:
+        st.info("No activities match the selected filters.")
+        return
+    
+    # Display activities in a table
+    activity_data = []
+    for activity in filtered_activities:
+        if isinstance(activity, dict):
+            activity_data.append({
+                'Timestamp': activity.get('created_at', 'N/A')[:19] if activity.get('created_at') else 'N/A',
+                'Username': activity.get('username', 'N/A'),
+                'Role': activity.get('role', 'N/A'),
+                'Activity': activity.get('activity_type', 'N/A'),
+                'IP Address': activity.get('ip_address', 'N/A'),
+            })
+        else:
+            # SQLite tuple format
+            activity_data.append({
+                'Timestamp': activity[7][:19] if len(activity) > 7 and activity[7] else 'N/A',
+                'Username': activity[2] if len(activity) > 2 else 'N/A',
+                'Role': activity[3] if len(activity) > 3 else 'N/A',
+                'Activity': activity[4] if len(activity) > 4 else 'N/A',
+                'IP Address': activity[5] if len(activity) > 5 else 'N/A',
+            })
+    
+    df = pd.DataFrame(activity_data)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    
+    # Export option
+    st.markdown("---")
+    if st.button("📥 Export Activity Log"):
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name=f"user_activity_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
 
 def admin_settings():
     st.subheader("⚙️ System Settings")

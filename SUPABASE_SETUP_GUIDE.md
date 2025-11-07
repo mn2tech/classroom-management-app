@@ -121,6 +121,19 @@ CREATE TABLE IF NOT EXISTS student_progress (
     FOREIGN KEY (assignment_id) REFERENCES assignments (id)
 );
 
+-- Create user_activity table (for tracking logins and user activity)
+CREATE TABLE IF NOT EXISTS user_activity (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    username TEXT,
+    role TEXT,
+    activity_type TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
 -- Enable Row Level Security (RLS) - Optional but recommended
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE newsletters ENABLE ROW LEVEL SECURITY;
@@ -128,18 +141,53 @@ ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_rsvps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE student_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_activity ENABLE ROW LEVEL SECURITY;
 
 -- Create policies to allow all operations (for now - can be restricted later)
+-- Note: If policies already exist, you can skip this section or drop them first
+-- Drop existing policies if they exist (optional - only if you get "already exists" error)
+DROP POLICY IF EXISTS "Enable all operations for users" ON users;
+DROP POLICY IF EXISTS "Enable all operations for newsletters" ON newsletters;
+DROP POLICY IF EXISTS "Enable all operations for events" ON events;
+DROP POLICY IF EXISTS "Enable all operations for event_rsvps" ON event_rsvps;
+DROP POLICY IF EXISTS "Enable all operations for assignments" ON assignments;
+DROP POLICY IF EXISTS "Enable all operations for student_progress" ON student_progress;
+DROP POLICY IF EXISTS "Enable all operations for user_activity" ON user_activity;
+
+-- Create policies
 CREATE POLICY "Enable all operations for users" ON users FOR ALL USING (true);
 CREATE POLICY "Enable all operations for newsletters" ON newsletters FOR ALL USING (true);
 CREATE POLICY "Enable all operations for events" ON events FOR ALL USING (true);
 CREATE POLICY "Enable all operations for event_rsvps" ON event_rsvps FOR ALL USING (true);
 CREATE POLICY "Enable all operations for assignments" ON assignments FOR ALL USING (true);
 CREATE POLICY "Enable all operations for student_progress" ON student_progress FOR ALL USING (true);
+CREATE POLICY "Enable all operations for user_activity" ON user_activity FOR ALL USING (true);
 ```
 
 4. Click **Run** (or press Ctrl+Enter)
 5. You should see "Success. No rows returned"
+
+**Note:** If you get an error saying policies already exist, the script now includes `DROP POLICY IF EXISTS` statements that will handle this automatically. If you only need to add the `user_activity` table (and other tables already exist), you can run just this:
+
+```sql
+-- Create user_activity table (for tracking logins and user activity)
+CREATE TABLE IF NOT EXISTS user_activity (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    username TEXT,
+    role TEXT,
+    activity_type TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+ALTER TABLE user_activity ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all operations for user_activity" ON user_activity;
+CREATE POLICY "Enable all operations for user_activity" ON user_activity FOR ALL USING (true);
+```
 
 ## Step 5: Configure Streamlit Cloud
 
@@ -231,4 +279,5 @@ Once Supabase is working:
 **Setup Time:** ~15 minutes  
 **Difficulty:** Easy  
 **Result:** Permanent data persistence! 🎉
+
 
