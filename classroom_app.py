@@ -2390,6 +2390,120 @@ def assignment_management():
     
     for assignment in assignments:
         with st.expander(f"{assignment[1]} - Due {assignment[4]}"):
+            # Action buttons
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col2:
+                if st.button("✏️ Edit", key=f"edit_assignment_{assignment[0]}"):
+                    st.session_state[f'editing_assignment_{assignment[0]}'] = True
+                    st.rerun()
+            with col3:
+                if st.button("🗑️ Delete", key=f"delete_assignment_{assignment[0]}", type="secondary"):
+                    st.session_state[f'confirm_delete_assignment_{assignment[0]}'] = True
+                    st.rerun()
+            
+            # Edit form
+            if st.session_state.get(f'editing_assignment_{assignment[0]}', False):
+                st.markdown("---")
+                st.markdown("### ✏️ Edit Assignment")
+                
+                # Parse date from string
+                try:
+                    due_date_obj = datetime.strptime(assignment[4], '%Y-%m-%d').date()
+                except:
+                    try:
+                        due_date_obj = datetime.strptime(assignment[4], '%B %d, %Y').date()
+                    except:
+                        due_date_obj = date.today()
+                
+                # Pre-fill form with existing data
+                edit_title = st.text_input("Assignment Title", value=assignment[1], key=f"edit_assignment_title_{assignment[0]}")
+                edit_description = st.text_area("Description", value=assignment[2] if assignment[2] else '', key=f"edit_assignment_description_{assignment[0]}")
+                edit_subject = st.selectbox(
+                    "Subject", 
+                    ["Bible/TFT", "Language Arts", "Math", "Science", "Social Studies"],
+                    index=["Bible/TFT", "Language Arts", "Math", "Science", "Social Studies"].index(assignment[3]) if assignment[3] in ["Bible/TFT", "Language Arts", "Math", "Science", "Social Studies"] else 0,
+                    key=f"edit_assignment_subject_{assignment[0]}"
+                )
+                edit_due_date = st.date_input("Due Date", value=due_date_obj, key=f"edit_assignment_due_date_{assignment[0]}")
+                edit_word_list = st.text_area("Word List (one per line)", value=assignment[5] if assignment[5] else '', key=f"edit_assignment_word_list_{assignment[0]}")
+                edit_memory_verse = st.text_area("Memory Verse", value=assignment[6] if assignment[6] else '', key=f"edit_assignment_memory_verse_{assignment[0]}")
+                
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("💾 Save Changes", key=f"save_assignment_{assignment[0]}", type="primary"):
+                        conn = get_db_connection()
+                        
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            update_data = {
+                                'title': edit_title,
+                                'description': edit_description,
+                                'subject': edit_subject,
+                                'due_date': edit_due_date.strftime('%Y-%m-%d'),
+                                'word_list': edit_word_list,
+                                'memory_verse': edit_memory_verse
+                            }
+                            try:
+                                supabase_client.table('assignments').update(update_data).eq('id', assignment[0]).execute()
+                                st.success("✅ Assignment updated successfully!")
+                                st.session_state[f'editing_assignment_{assignment[0]}'] = False
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error updating assignment: {str(e)}")
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('''
+                                UPDATE assignments 
+                                SET title = ?, description = ?, subject = ?, due_date = ?, word_list = ?, memory_verse = ?
+                                WHERE id = ?
+                            ''', (edit_title, edit_description, edit_subject, edit_due_date.strftime('%Y-%m-%d'), 
+                                  edit_word_list, edit_memory_verse, assignment[0]))
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Assignment updated successfully!")
+                            st.session_state[f'editing_assignment_{assignment[0]}'] = False
+                            st.rerun()
+                
+                with col2:
+                    if st.button("❌ Cancel", key=f"cancel_edit_assignment_{assignment[0]}"):
+                        st.session_state[f'editing_assignment_{assignment[0]}'] = False
+                        st.rerun()
+                
+                st.markdown("---")
+            
+            # Confirmation dialog for delete
+            if st.session_state.get(f'confirm_delete_assignment_{assignment[0]}', False):
+                st.warning(f"⚠️ Are you sure you want to delete '{assignment[1]}'? This action cannot be undone!")
+                col1, col2, col3 = st.columns([1, 1, 2])
+                with col1:
+                    if st.button("✅ Yes, Delete", key=f"confirm_delete_assignment_yes_{assignment[0]}", type="primary"):
+                        conn = get_db_connection()
+                        
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            try:
+                                supabase_client.table('assignments').delete().eq('id', assignment[0]).execute()
+                                st.success("Assignment deleted successfully!")
+                            except Exception as e:
+                                st.error(f"Error deleting assignment: {str(e)}")
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('DELETE FROM assignments WHERE id = ?', (assignment[0],))
+                            conn.commit()
+                            conn.close()
+                            st.success("Assignment deleted successfully!")
+                        
+                        if f'confirm_delete_assignment_{assignment[0]}' in st.session_state:
+                            del st.session_state[f'confirm_delete_assignment_{assignment[0]}']
+                        st.rerun()
+                with col2:
+                    if st.button("❌ Cancel", key=f"cancel_delete_assignment_{assignment[0]}"):
+                        st.session_state[f'confirm_delete_assignment_{assignment[0]}'] = False
+                        st.rerun()
+            
+            # Display assignment details
             st.markdown(f"**Subject:** {assignment[3]}")
             st.markdown(f"**Description:** {assignment[2]}")
             if assignment[5]:
