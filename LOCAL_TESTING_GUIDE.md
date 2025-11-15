@@ -101,3 +101,4 @@ Once local testing works:
 **Note:** The app will use Supabase if credentials are found, otherwise it falls back to SQLite for local development.
 
 
+

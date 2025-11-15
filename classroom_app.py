@@ -1308,9 +1308,7 @@ def generate_newsletter_pdf(newsletter_data):
             
             if right_column.get('word_list'):
                 story.append(Paragraph("<b>WORD LIST</b>", section_style))
-                story.append(Paragraph("Test on Fridays, due October 3, 2025.", content_style))
                 story.append(Paragraph(right_column['word_list'].replace('\n', '<br/>'), content_style))
-                story.append(Paragraph("Bonus: angry, praiseworthy, listen, faithful", content_style))
                 story.append(Spacer(1, 12))
             
             if right_column.get('practice_home'):
@@ -1518,6 +1516,8 @@ def main():
         teacher_dashboard()
     elif user['role'] == 'parent':
         parent_dashboard()
+    elif user['role'] == 'student':
+        student_dashboard()
     else:
         st.error(f"Invalid user role: {user['role']}")
         st.write(f"Debug info: {user}")
@@ -1601,6 +1601,46 @@ def teacher_dashboard():
         </p>
         <p style="color: #6c757d; font-size: 0.8em; margin: 5px 0 0 0;">
             Empowering Education Through Technology
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def student_dashboard():
+    user = st.session_state.user
+    # Personalize dashboard header with student's name
+    student_name = user.get('name', '')
+    if student_name:
+        dashboard_title = f"👨‍🎓 Welcome, {student_name}!"
+    else:
+        # Fallback to username if name not available
+        username = user['username'].replace('.', ' ').replace('_', ' ').title()
+        dashboard_title = f"👨‍🎓 Welcome, {username}!"
+    
+    st.header(dashboard_title)
+    st.markdown("**Student Dashboard - View assignments and track your progress**")
+    
+    # Navigation tabs
+    tab1, tab2, tab3 = st.tabs([
+        "📝 My Assignments", "📰 Newsletter", "📅 Events"
+    ])
+    
+    with tab1:
+        view_student_assignments()
+    
+    with tab2:
+        view_newsletter()
+    
+    with tab3:
+        view_events()
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 8px; margin-top: 30px;">
+        <p style="color: #6c757d; font-size: 0.9em; margin: 0;">
+            <strong>Designed by</strong> 
+            <a href="https://www.nm2tech.com" target="_blank" style="color: #007bff; font-weight: bold; text-decoration: none;">NM2TECH LLC</a> 
+            - Technology Simplified
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1885,8 +1925,12 @@ def newsletter_management():
             content = json.loads(newsletter[2])
             
             # Action buttons
-            col1, col2, col3 = st.columns([2, 1, 1])
+            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
             with col2:
+                if st.button("✏️ Edit", key=f"edit_{newsletter[0]}"):
+                    st.session_state[f'editing_newsletter_{newsletter[0]}'] = True
+                    st.rerun()
+            with col3:
                 if st.button("📥 Download PDF", key=f"download_{newsletter[0]}", type="primary"):
                     try:
                         pdf_data = generate_newsletter_pdf(content)
@@ -1899,11 +1943,129 @@ def newsletter_management():
                         )
                     except Exception as e:
                         st.error(f"Error generating PDF: {str(e)}")
-            with col3:
+            with col4:
                 if st.button("🗑️ Delete", key=f"delete_{newsletter[0]}", type="secondary"):
                     st.session_state[f'confirm_delete_{newsletter[0]}'] = True
                     st.write(f"Debug: Delete button clicked for newsletter {newsletter[0]} - {newsletter[1]}")
                     st.rerun()
+            
+            # Edit form
+            if st.session_state.get(f'editing_newsletter_{newsletter[0]}', False):
+                st.markdown("---")
+                st.markdown("### ✏️ Edit Newsletter")
+                
+                # Parse date from string
+                try:
+                    newsletter_date_obj = datetime.strptime(newsletter[3], '%Y-%m-%d').date()
+                except:
+                    try:
+                        newsletter_date_obj = datetime.strptime(newsletter[3], '%B %d, %Y').date()
+                    except:
+                        newsletter_date_obj = date.today()
+                
+                # Pre-fill form with existing data
+                edit_title = st.text_input("Newsletter Title", value=newsletter[1], key=f"edit_title_{newsletter[0]}")
+                edit_date = st.date_input("Date", value=newsletter_date_obj, key=f"edit_date_{newsletter[0]}")
+                
+                # Newsletter sections
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Left Column**")
+                    edit_upcoming_events = st.text_area(
+                        "Upcoming Events", 
+                        value=content.get('left_column', {}).get('upcoming_events', ''),
+                        height=150, 
+                        key=f"edit_upcoming_{newsletter[0]}"
+                    )
+                    edit_learning_snapshot = st.text_area(
+                        "Our Learning Snapshot", 
+                        value=content.get('left_column', {}).get('learning_snapshot', ''),
+                        height=150, 
+                        key=f"edit_learning_{newsletter[0]}"
+                    )
+                    edit_important_news = st.text_area(
+                        "Important News", 
+                        value=content.get('left_column', {}).get('important_news', ''),
+                        height=150, 
+                        key=f"edit_important_{newsletter[0]}"
+                    )
+                
+                with col2:
+                    st.markdown("**Right Column**")
+                    edit_word_list = st.text_area(
+                        "Word List", 
+                        value=content.get('right_column', {}).get('word_list', ''),
+                        height=150, 
+                        key=f"edit_word_list_{newsletter[0]}"
+                    )
+                    edit_practice_home = st.text_area(
+                        "Practice @ Home", 
+                        value=content.get('right_column', {}).get('practice_home', ''),
+                        height=150, 
+                        key=f"edit_practice_{newsletter[0]}"
+                    )
+                    edit_memory_verse = st.text_area(
+                        "Memory Verse", 
+                        value=content.get('right_column', {}).get('memory_verse', ''),
+                        height=100, 
+                        key=f"edit_memory_{newsletter[0]}"
+                    )
+                
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("💾 Save Changes", key=f"save_newsletter_{newsletter[0]}", type="primary"):
+                        # Update newsletter in database
+                        updated_content = {
+                            'title': edit_title,
+                            'date': edit_date.strftime('%B %d, %Y'),
+                            'left_column': {
+                                'upcoming_events': edit_upcoming_events,
+                                'learning_snapshot': edit_learning_snapshot,
+                                'important_news': edit_important_news
+                            },
+                            'right_column': {
+                                'word_list': edit_word_list,
+                                'practice_home': edit_practice_home,
+                                'memory_verse': edit_memory_verse
+                            }
+                        }
+                        
+                        conn = get_db_connection()
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            update_data = {
+                                'title': edit_title,
+                                'content': json.dumps(updated_content),
+                                'date': edit_date.strftime('%Y-%m-%d')
+                            }
+                            try:
+                                supabase_client.table('newsletters').update(update_data).eq('id', newsletter[0]).execute()
+                                st.success("✅ Newsletter updated successfully!")
+                                st.session_state[f'editing_newsletter_{newsletter[0]}'] = False
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error updating newsletter: {str(e)}")
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('''
+                                UPDATE newsletters 
+                                SET title = ?, content = ?, date = ?
+                                WHERE id = ?
+                            ''', (edit_title, json.dumps(updated_content), edit_date.strftime('%Y-%m-%d'), newsletter[0]))
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Newsletter updated successfully!")
+                            st.session_state[f'editing_newsletter_{newsletter[0]}'] = False
+                            st.rerun()
+                
+                with col2:
+                    if st.button("❌ Cancel", key=f"cancel_edit_{newsletter[0]}"):
+                        st.session_state[f'editing_newsletter_{newsletter[0]}'] = False
+                        st.rerun()
+                
+                st.markdown("---")
             
             # Confirmation dialog for individual delete
             if st.session_state.get(f'confirm_delete_{newsletter[0]}', False):
@@ -2006,11 +2168,9 @@ def newsletter_management():
                 if content['right_column']['word_list']:
                     st.markdown(f"""
                     <div style="background-color: #fff; padding: 15px; border-left: 4px solid #9b59b6; margin-bottom: 20px;">
-                        <p style="margin-bottom: 10px; font-weight: bold;">Test on Fridays, due October 3, 2025.</p>
                         <div style="font-family: 'Courier New', monospace; line-height: 1.8;">
                             {content['right_column']['word_list'].replace(chr(10), '<br>')}
                         </div>
-                        <p style="margin-top: 10px; font-weight: bold;">Bonus: angry, praiseworthy, listen, faithful</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
@@ -2239,13 +2399,486 @@ def assignment_management():
 
 def student_management():
     st.subheader("👥 Student Management")
+    st.markdown("**Create and manage student accounts, view progress, and link students to parents**")
     
-    # This would typically show student progress, but for MVP we'll show a placeholder
-    st.info("Student management features coming soon! This will include:")
-    st.markdown("- Student progress tracking")
-    st.markdown("- Individual assignment completion")
-    st.markdown("- Parent communication logs")
-    st.markdown("- Performance analytics")
+    conn = get_db_connection()
+    
+    # Add parent_id column to users table if it doesn't exist (for linking students to parents)
+    if not isinstance(conn, SupabaseAdapter):
+        try:
+            cursor = conn.cursor()
+            cursor.execute('ALTER TABLE users ADD COLUMN parent_id TEXT')
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    
+    # Navigation tabs for student management
+    tab1, tab2, tab3 = st.tabs(["📋 All Students", "➕ Add Student", "📊 Student Progress"])
+    
+    with tab1:
+        # View all students
+        if isinstance(conn, SupabaseAdapter):
+            supabase_client = conn.client
+            students_result = supabase_client.table('users').select('*').eq('role', 'student').order('name').order('created_at', desc=True).execute()
+            students = students_result.data if students_result.data else []
+            conn.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, username, role, email, phone, name, parent_id, created_at
+                FROM users 
+                WHERE role = 'student'
+                ORDER BY name, created_at DESC
+            ''')
+            students = cursor.fetchall()
+            conn.close()
+        
+        if not students:
+            st.info("📭 No students found. Add your first student using the 'Add Student' tab.")
+        else:
+            st.success(f"Total Students: {len(students)}")
+            
+            # Display students in expandable cards
+            for student in students:
+                if isinstance(student, dict):
+                    student_id = student.get('id')
+                    username = student.get('username', 'N/A')
+                    name = student.get('name', username)
+                    email = student.get('email', 'No email')
+                    phone = student.get('phone', 'No phone')
+                    parent_id = student.get('parent_id')
+                    created_at = student.get('created_at', 'N/A')
+                else:
+                    student_id = student[0]
+                    username = student[1] if len(student) > 1 else 'N/A'
+                    name = student[5] if len(student) > 5 and student[5] else username
+                    email = student[3] if len(student) > 3 else 'No email'
+                    phone = student[4] if len(student) > 4 else 'No phone'
+                    parent_id = student[6] if len(student) > 6 else None
+                    created_at = student[7] if len(student) > 7 else 'N/A'
+                
+                with st.expander(f"👤 {name} ({username})", expanded=False):
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    with col1:
+                        st.markdown(f"""
+                        **Name:** {name}  
+                        **Username:** `{username}`  
+                        **Email:** {email or 'Not provided'}  
+                        **Phone:** {phone or 'Not provided'}  
+                        **Created:** {created_at[:10] if created_at else 'N/A'}
+                        """)
+                        
+                        # Show linked parent if exists
+                        if parent_id:
+                            conn = get_db_connection()
+                            if isinstance(conn, SupabaseAdapter):
+                                supabase_client = conn.client
+                                parent_result = supabase_client.table('users').select('name, username, email').eq('id', parent_id).execute()
+                                if parent_result.data:
+                                    parent = parent_result.data[0]
+                                    st.info(f"👨‍👩‍👧‍👦 **Linked Parent:** {parent.get('name', parent.get('username', 'Unknown'))} ({parent.get('email', 'No email')})")
+                                conn.close()
+                            else:
+                                cursor = conn.cursor()
+                                cursor.execute('SELECT name, username, email FROM users WHERE id = ?', (parent_id,))
+                                parent = cursor.fetchone()
+                                if parent:
+                                    parent_name = parent[0] if parent[0] else parent[1]
+                                    st.info(f"👨‍👩‍👧‍👦 **Linked Parent:** {parent_name} ({parent[2] if len(parent) > 2 else 'No email'})")
+                                conn.close()
+                        else:
+                            st.warning("⚠️ No parent linked")
+                    
+                    with col2:
+                        if st.button("✏️ Edit", key=f"edit_student_{student_id}"):
+                            st.session_state[f'editing_student_{student_id}'] = True
+                            st.rerun()
+                    
+                    # Show edit form if editing
+                    if st.session_state.get(f'editing_student_{student_id}', False):
+                        st.markdown("---")
+                        st.markdown("### ✏️ Edit Student")
+                        
+                        # Get current student data
+                        conn = get_db_connection()
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            current_student = supabase_client.table('users').select('*').eq('id', student_id).execute()
+                            if current_student.data:
+                                current = current_student.data[0]
+                                current_name = current.get('name', '')
+                                current_email = current.get('email', '')
+                                current_phone = current.get('phone', '')
+                                current_parent_id = current.get('parent_id')
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('SELECT name, email, phone, parent_id FROM users WHERE id = ?', (student_id,))
+                            current = cursor.fetchone()
+                            current_name = current[0] if current and current[0] else ''
+                            current_email = current[1] if current and len(current) > 1 and current[1] else ''
+                            current_phone = current[2] if current and len(current) > 2 and current[2] else ''
+                            current_parent_id = current[3] if current and len(current) > 3 and current[3] else None
+                            conn.close()
+                        
+                        # Get all parents for dropdown
+                        conn = get_db_connection()
+                        if isinstance(conn, SupabaseAdapter):
+                            supabase_client = conn.client
+                            parents_result = supabase_client.table('users').select('id, name, username, email').eq('role', 'parent').order('name').execute()
+                            parents = parents_result.data if parents_result.data else []
+                            conn.close()
+                        else:
+                            cursor = conn.cursor()
+                            cursor.execute('SELECT id, name, username, email FROM users WHERE role = ? ORDER BY name', ('parent',))
+                            parents = cursor.fetchall()
+                            conn.close()
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            new_name = st.text_input("Student Name", value=current_name, key=f"edit_name_{student_id}")
+                            new_email = st.text_input("Email", value=current_email, key=f"edit_email_{student_id}")
+                            new_phone = st.text_input("Phone", value=current_phone, key=f"edit_phone_{student_id}")
+                        
+                        with col2:
+                            # Parent selector
+                            parent_options = ["None"] + [f"{p.get('name', p.get('username', 'Unknown')) if isinstance(p, dict) else (p[1] if p[1] else p[2])} ({p.get('id') if isinstance(p, dict) else p[0]})" for p in parents]
+                            
+                            # Find current parent in list
+                            current_parent_index = 0
+                            if current_parent_id:
+                                for idx, p in enumerate(parents):
+                                    p_id = p.get('id') if isinstance(p, dict) else p[0]
+                                    if p_id == current_parent_id:
+                                        current_parent_index = idx + 1  # +1 because "None" is at index 0
+                                        break
+                            
+                            selected_parent = st.selectbox(
+                                "Link to Parent",
+                                parent_options,
+                                index=current_parent_index,
+                                key=f"edit_parent_{student_id}"
+                            )
+                            new_parent_id = None
+                            if selected_parent != "None":
+                                parent_id_match = selected_parent.split('(')[-1].rstrip(')')
+                                new_parent_id = parent_id_match
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("💾 Save Changes", key=f"save_student_{student_id}", type="primary"):
+                                conn = get_db_connection()
+                                if isinstance(conn, SupabaseAdapter):
+                                    supabase_client = conn.client
+                                    update_data = {
+                                        'name': new_name,
+                                        'email': new_email or '',
+                                        'phone': new_phone or '',
+                                        'parent_id': new_parent_id
+                                    }
+                                    try:
+                                        supabase_client.table('users').update(update_data).eq('id', student_id).execute()
+                                        st.success("✅ Student updated successfully!")
+                                        st.session_state[f'editing_student_{student_id}'] = False
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error updating student: {str(e)}")
+                                    conn.close()
+                                else:
+                                    cursor = conn.cursor()
+                                    cursor.execute('''
+                                        UPDATE users 
+                                        SET name = ?, email = ?, phone = ?, parent_id = ?
+                                        WHERE id = ?
+                                    ''', (new_name, new_email or '', new_phone or '', new_parent_id, student_id))
+                                    conn.commit()
+                                    conn.close()
+                                    st.success("✅ Student updated successfully!")
+                                    st.session_state[f'editing_student_{student_id}'] = False
+                                    st.rerun()
+                        
+                        with col2:
+                            if st.button("❌ Cancel", key=f"cancel_edit_{student_id}"):
+                                st.session_state[f'editing_student_{student_id}'] = False
+                                st.rerun()
+                    
+                    with col3:
+                        if st.button("🗑️ Delete", key=f"delete_student_{student_id}", type="secondary"):
+                            if st.session_state.get(f"confirm_delete_student_{student_id}", False):
+                                conn = get_db_connection()
+                                if isinstance(conn, SupabaseAdapter):
+                                    supabase_client = conn.client
+                                    try:
+                                        supabase_client.table('users').delete().eq('id', student_id).execute()
+                                        st.success(f"Student {name} deleted successfully!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error deleting student: {str(e)}")
+                                    conn.close()
+                                else:
+                                    cursor = conn.cursor()
+                                    cursor.execute('DELETE FROM users WHERE id = ?', (student_id,))
+                                    conn.commit()
+                                    conn.close()
+                                    st.success(f"Student {name} deleted successfully!")
+                                    st.rerun()
+                            else:
+                                st.session_state[f"confirm_delete_student_{student_id}"] = True
+                                st.warning(f"⚠️ Delete '{name}'? This cannot be undone!")
+                                if st.button("✅ Yes, Delete", key=f"confirm_yes_student_{student_id}"):
+                                    conn = get_db_connection()
+                                    if isinstance(conn, SupabaseAdapter):
+                                        supabase_client = conn.client
+                                        try:
+                                            supabase_client.table('users').delete().eq('id', student_id).execute()
+                                            st.success("Student deleted!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error: {str(e)}")
+                                        conn.close()
+                                    else:
+                                        cursor = conn.cursor()
+                                        cursor.execute('DELETE FROM users WHERE id = ?', (student_id,))
+                                        conn.commit()
+                                        conn.close()
+                                        st.success("Student deleted!")
+                                        st.rerun()
+    
+    with tab2:
+        # Add new student
+        st.markdown("### ➕ Add New Student")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            student_username = st.text_input(
+                "Student Username",
+                help="Unique username for the student (e.g., 'john.doe', 'student1')",
+                key="new_student_username"
+            )
+            student_password = st.text_input(
+                "Password",
+                type="password",
+                help="Password for student login",
+                key="new_student_password"
+            )
+            st.info("💡 Note: Email is not required for second grade students")
+        
+        with col2:
+            student_name = st.text_input(
+                "Student Full Name *",
+                help="Full name of the student (e.g., 'John Doe')",
+                key="new_student_name"
+            )
+            student_phone = st.text_input(
+                "Phone Number (Optional)",
+                help="Contact phone number - not required for second graders",
+                key="new_student_phone",
+                value=""
+            )
+            student_email = st.text_input(
+                "Email Address (Optional)",
+                help="Student's email - not required for second graders",
+                key="new_student_email",
+                value=""
+            )
+            # Link to parent
+            conn = get_db_connection()
+            if isinstance(conn, SupabaseAdapter):
+                supabase_client = conn.client
+                parents_result = supabase_client.table('users').select('id, name, username, email').eq('role', 'parent').order('name').execute()
+                parents = parents_result.data if parents_result.data else []
+                conn.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute('SELECT id, name, username, email FROM users WHERE role = ? ORDER BY name', ('parent',))
+                parents = cursor.fetchall()
+                conn.close()
+            
+            parent_options = ["None"] + [f"{p.get('name', p.get('username', 'Unknown')) if isinstance(p, dict) else (p[1] if p[1] else p[2])} ({p.get('id') if isinstance(p, dict) else p[0]})" for p in parents]
+            selected_parent = st.selectbox(
+                "Link to Parent (Optional)",
+                parent_options,
+                key="new_student_parent"
+            )
+            selected_parent_id = None
+            if selected_parent != "None":
+                # Extract parent ID from selection
+                parent_id_match = selected_parent.split('(')[-1].rstrip(')')
+                selected_parent_id = parent_id_match
+        
+        if st.button("➕ Create Student Account", type="primary", key="create_student_btn"):
+            if not student_username or not student_password or not student_name:
+                st.error("Please fill in Username, Password, and Student Name (required fields).")
+            else:
+                conn = get_db_connection()
+                
+                if isinstance(conn, SupabaseAdapter):
+                    supabase_client = conn.client
+                    
+                    # Check if username already exists
+                    existing_result = supabase_client.table('users').select('*').eq('username', student_username).execute()
+                    
+                    if existing_result.data and len(existing_result.data) > 0:
+                        st.error(f"Username '{student_username}' already exists. Please choose a different username.")
+                    else:
+                        student_id = str(uuid.uuid4())
+                        student_data = {
+                            'id': student_id,
+                            'username': student_username,
+                            'password': student_password,
+                            'role': 'student',
+                            'email': student_email or '',
+                            'phone': student_phone or '',
+                            'name': student_name,
+                            'parent_id': selected_parent_id
+                        }
+                        
+                        try:
+                            supabase_client.table('users').insert(student_data).execute()
+                            st.success(f"✅ Student account created successfully!")
+                            st.info(f"""
+                            **Student Credentials:**
+                            - Username: `{student_username}`
+                            - Password: `{student_password}`
+                            - Name: {student_name}
+                            """)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error creating student: {str(e)}")
+                        conn.close()
+                else:
+                    # SQLite
+                    cursor = conn.cursor()
+                    
+                    # Check if username exists
+                    cursor.execute('SELECT id FROM users WHERE username = ?', (student_username,))
+                    if cursor.fetchone():
+                        st.error(f"Username '{student_username}' already exists. Please choose a different username.")
+                    else:
+                        student_id = str(uuid.uuid4())
+                        cursor.execute('''
+                            INSERT INTO users (id, username, password, role, email, phone, name, parent_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (student_id, student_username, student_password, 'student', 
+                              student_email or '', student_phone or '', student_name, selected_parent_id))
+                        conn.commit()
+                        st.success(f"✅ Student account created successfully!")
+                        st.info(f"""
+                        **Student Credentials:**
+                        - Username: `{student_username}`
+                        - Password: `{student_password}`
+                        - Name: {student_name}
+                        """)
+                        st.rerun()
+                    conn.close()
+    
+    with tab3:
+        # Student Progress View
+        st.markdown("### 📊 Student Progress on Assignments")
+        
+        conn = get_db_connection()
+        
+        # Get all students
+        if isinstance(conn, SupabaseAdapter):
+            supabase_client = conn.client
+            students_result = supabase_client.table('users').select('id, name, username').eq('role', 'student').order('name').execute()
+            students_list = students_result.data if students_result.data else []
+            conn.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, name, username FROM users WHERE role = ? ORDER BY name', ('student',))
+            students_list = cursor.fetchall()
+            conn.close()
+        
+        if not students_list:
+            st.info("No students found. Add students first to view their progress.")
+        else:
+            # Student selector
+            student_options = {}
+            for s in students_list:
+                if isinstance(s, dict):
+                    student_id = s.get('id')
+                    name = s.get('name', s.get('username', 'Unknown'))
+                else:
+                    student_id = s[0]
+                    name = s[1] if s[1] else s[2]
+                student_options[name] = student_id
+            
+            selected_student_name = st.selectbox("Select Student", list(student_options.keys()))
+            selected_student_id = student_options[selected_student_name]
+            
+            # Get assignments
+            conn = get_db_connection()
+            if isinstance(conn, SupabaseAdapter):
+                supabase_client = conn.client
+                assignments_result = supabase_client.table('assignments').select('*').order('created_at', desc=True).execute()
+                assignments = assignments_result.data if assignments_result.data else []
+                conn.close()
+            else:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM assignments ORDER BY created_at DESC')
+                assignments = cursor.fetchall()
+                conn.close()
+            
+            if not assignments:
+                st.info("No assignments found. Create assignments first.")
+            else:
+                # Get student progress
+                conn = get_db_connection()
+                if isinstance(conn, SupabaseAdapter):
+                    supabase_client = conn.client
+                    progress_result = supabase_client.table('student_progress').select('*').eq('student_id', selected_student_id).execute()
+                    progress_data = progress_result.data if progress_result.data else []
+                    conn.close()
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT * FROM student_progress WHERE student_id = ?', (selected_student_id,))
+                    progress_data = cursor.fetchall()
+                    conn.close()
+                
+                # Create progress lookup
+                progress_lookup = {}
+                for p in progress_data:
+                    if isinstance(p, dict):
+                        assignment_id = p.get('assignment_id')
+                        completed = p.get('completed', False)
+                        submitted_at = p.get('submitted_at')
+                    else:
+                        assignment_id = p[2] if len(p) > 2 else None
+                        completed = p[5] if len(p) > 5 else False
+                        submitted_at = p[6] if len(p) > 6 else None
+                    if assignment_id:
+                        progress_lookup[assignment_id] = {'completed': completed, 'submitted_at': submitted_at}
+                
+                # Display assignments with progress
+                st.markdown(f"### Progress for {selected_student_name}")
+                
+                for assignment in assignments:
+                    if isinstance(assignment, dict):
+                        assignment_id = assignment.get('id')
+                        title = assignment.get('title', 'N/A')
+                        due_date = assignment.get('due_date', 'N/A')
+                    else:
+                        assignment_id = assignment[0]
+                        title = assignment[1] if len(assignment) > 1 else 'N/A'
+                        due_date = assignment[4] if len(assignment) > 4 else 'N/A'
+                    
+                    progress = progress_lookup.get(assignment_id, {})
+                    completed = progress.get('completed', False)
+                    submitted_at = progress.get('submitted_at')
+                    
+                    status_icon = "✅" if completed else "⏳"
+                    status_text = "Completed" if completed else "Not Started"
+                    
+                    with st.expander(f"{status_icon} {title} - {status_text}", expanded=False):
+                        st.markdown(f"**Due Date:** {due_date}")
+                        if completed and submitted_at:
+                            st.success(f"✅ Submitted on: {submitted_at[:10] if submitted_at else 'N/A'}")
+                        else:
+                            st.warning("⏳ Assignment not yet completed")
 
 def parent_user_management():
     st.subheader("👨‍👩‍👧‍👦 Parent Account Management")
@@ -2287,7 +2920,7 @@ def parent_user_management():
             student_name = st.text_input(
                 "Student Name",
                 help="Name of the parent's child in your class",
-                key="new_student_name"
+                key="new_parent_student_name"
             )
         
         if st.button("➕ Create Parent Account", type="primary", key="create_parent_btn"):
@@ -3449,11 +4082,9 @@ def view_newsletter():
             if content['right_column']['word_list']:
                 st.markdown(f"""
                 <div style="background-color: #fff; padding: 15px; border-left: 4px solid #9b59b6; margin-bottom: 20px;">
-                    <p style="margin-bottom: 10px; font-weight: bold;">Test on Fridays, due October 3, 2025.</p>
                     <div style="font-family: 'Courier New', monospace; line-height: 1.8;">
                         {content['right_column']['word_list'].replace(chr(10), '<br>')}
                     </div>
-                    <p style="margin-top: 10px; font-weight: bold;">Bonus: angry, praiseworthy, listen, faithful</p>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -3559,12 +4190,408 @@ def view_assignments():
 
 def view_child_progress():
     st.subheader("👶 My Child's Progress")
+    st.markdown("**View your child's assignment progress and completion status**")
     
-    st.info("Student progress tracking coming soon! This will show:")
-    st.markdown("- Assignment completion status")
-    st.markdown("- Word list progress")
-    st.markdown("- Memory verse progress")
-    st.markdown("- Overall performance metrics")
+    user = st.session_state.user
+    parent_id = user.get('id')
+    
+    conn = get_db_connection()
+    
+    # Find the student linked to this parent
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        student_result = supabase_client.table('users').select('*').eq('parent_id', parent_id).eq('role', 'student').execute()
+        students = student_result.data if student_result.data else []
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE parent_id = ? AND role = ?', (parent_id, 'student'))
+        students = cursor.fetchall()
+        conn.close()
+    
+    if not students:
+        st.info("""
+        👨‍👩‍👧‍👦 **No student linked to your account yet.**
+        
+        Please contact your child's teacher to link your parent account to your child's student account.
+        Once linked, you'll be able to view your child's progress here.
+        """)
+        return
+    
+    # If multiple students, let parent select which one
+    if len(students) > 1:
+        student_options = {}
+        for s in students:
+            if isinstance(s, dict):
+                student_id = s.get('id')
+                name = s.get('name', s.get('username', 'Unknown'))
+            else:
+                student_id = s[0]
+                name = s[5] if len(s) > 5 and s[5] else (s[1] if len(s) > 1 else 'Unknown')
+            student_options[name] = student_id
+        
+        selected_student_name = st.selectbox("Select Child", list(student_options.keys()))
+        selected_student_id = student_options[selected_student_name]
+    else:
+        # Single student
+        if isinstance(students[0], dict):
+            selected_student_id = students[0].get('id')
+            selected_student_name = students[0].get('name', students[0].get('username', 'Your Child'))
+        else:
+            selected_student_id = students[0][0]
+            selected_student_name = students[0][5] if len(students[0]) > 5 and students[0][5] else (students[0][1] if len(students[0]) > 1 else 'Your Child')
+    
+    st.markdown(f"### 📊 Progress for {selected_student_name}")
+    
+    # Get all assignments
+    conn = get_db_connection()
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        assignments_result = supabase_client.table('assignments').select('*').order('created_at', desc=True).execute()
+        assignments = assignments_result.data if assignments_result.data else []
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM assignments ORDER BY created_at DESC')
+        assignments = cursor.fetchall()
+        conn.close()
+    
+    if not assignments:
+        st.info("No assignments found. Assignments will appear here once the teacher creates them.")
+        return
+    
+    # Get student progress
+    conn = get_db_connection()
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        progress_result = supabase_client.table('student_progress').select('*').eq('student_id', selected_student_id).execute()
+        progress_data = progress_result.data if progress_result.data else []
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM student_progress WHERE student_id = ?', (selected_student_id,))
+        progress_data = cursor.fetchall()
+        conn.close()
+    
+    # Create progress lookup
+    progress_lookup = {}
+    for p in progress_data:
+        if isinstance(p, dict):
+            assignment_id = p.get('assignment_id')
+            completed = p.get('completed', False)
+            submitted_at = p.get('submitted_at')
+            word_list_progress = p.get('word_list_progress', '')
+            memory_verse_progress = p.get('memory_verse_progress', '')
+        else:
+            assignment_id = p[2] if len(p) > 2 else None
+            completed = p[5] if len(p) > 5 else False
+            submitted_at = p[6] if len(p) > 6 else None
+            word_list_progress = p[3] if len(p) > 3 else ''
+            memory_verse_progress = p[4] if len(p) > 4 else ''
+        if assignment_id:
+            progress_lookup[assignment_id] = {
+                'completed': completed,
+                'submitted_at': submitted_at,
+                'word_list_progress': word_list_progress,
+                'memory_verse_progress': memory_verse_progress
+            }
+    
+    # Calculate statistics
+    total_assignments = len(assignments)
+    completed_count = sum(1 for a in assignments if progress_lookup.get(a.get('id') if isinstance(a, dict) else a[0], {}).get('completed', False))
+    completion_rate = (completed_count / total_assignments * 100) if total_assignments > 0 else 0
+    
+    # Display statistics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Assignments", total_assignments)
+    with col2:
+        st.metric("Completed", completed_count)
+    with col3:
+        st.metric("Completion Rate", f"{completion_rate:.0f}%")
+    
+    st.markdown("---")
+    st.markdown("### 📝 Assignment Details")
+    
+    # Display assignments with progress
+    for assignment in assignments:
+        if isinstance(assignment, dict):
+            assignment_id = assignment.get('id')
+            title = assignment.get('title', 'N/A')
+            description = assignment.get('description', '')
+            due_date = assignment.get('due_date', 'N/A')
+            word_list = assignment.get('word_list', '')
+            memory_verse = assignment.get('memory_verse', '')
+        else:
+            assignment_id = assignment[0]
+            title = assignment[1] if len(assignment) > 1 else 'N/A'
+            description = assignment[2] if len(assignment) > 2 else ''
+            due_date = assignment[4] if len(assignment) > 4 else 'N/A'
+            word_list = assignment[5] if len(assignment) > 5 else ''
+            memory_verse = assignment[6] if len(assignment) > 6 else ''
+        
+        progress = progress_lookup.get(assignment_id, {})
+        completed = progress.get('completed', False)
+        submitted_at = progress.get('submitted_at')
+        word_list_progress = progress.get('word_list_progress', '')
+        memory_verse_progress = progress.get('memory_verse_progress', '')
+        
+        status_icon = "✅" if completed else "⏳"
+        status_text = "Completed" if completed else "In Progress"
+        status_color = "🟢" if completed else "🟡"
+        
+        with st.expander(f"{status_color} {title} - {status_text}", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"**Due Date:** {due_date}")
+                if description:
+                    st.markdown(f"**Description:**\n{description}")
+            
+            with col2:
+                if completed and submitted_at:
+                    st.success(f"✅ **Submitted on:** {submitted_at[:10] if submitted_at else 'N/A'}")
+                else:
+                    st.warning("⏳ **Not yet completed**")
+            
+            # Word list progress
+            if word_list:
+                st.markdown("---")
+                st.markdown("**📚 Word List:**")
+                if word_list_progress:
+                    st.info(f"Progress: {word_list_progress}")
+                else:
+                    st.warning("Word list not started yet")
+                st.text(word_list)
+            
+            # Memory verse progress
+            if memory_verse:
+                st.markdown("---")
+                st.markdown("**📖 Memory Verse:**")
+                if memory_verse_progress:
+                    st.info(f"Progress: {memory_verse_progress}")
+                else:
+                    st.warning("Memory verse not started yet")
+                st.text(memory_verse)
+
+def view_student_assignments():
+    st.subheader("📝 My Assignments")
+    st.markdown("**View and complete your assignments**")
+    
+    user = st.session_state.user
+    student_id = user.get('id')
+    
+    # Get all assignments
+    conn = get_db_connection()
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        assignments_result = supabase_client.table('assignments').select('*').order('created_at', desc=True).execute()
+        assignments = assignments_result.data if assignments_result.data else []
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM assignments ORDER BY created_at DESC')
+        assignments = cursor.fetchall()
+        conn.close()
+    
+    if not assignments:
+        st.info("No assignments found. Your teacher will add assignments here.")
+        return
+    
+    # Get student progress
+    conn = get_db_connection()
+    if isinstance(conn, SupabaseAdapter):
+        supabase_client = conn.client
+        progress_result = supabase_client.table('student_progress').select('*').eq('student_id', student_id).execute()
+        progress_data = progress_result.data if progress_result.data else []
+        conn.close()
+    else:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM student_progress WHERE student_id = ?', (student_id,))
+        progress_data = cursor.fetchall()
+        conn.close()
+    
+    # Create progress lookup
+    progress_lookup = {}
+    for p in progress_data:
+        if isinstance(p, dict):
+            assignment_id = p.get('assignment_id')
+            completed = p.get('completed', False)
+            word_list_progress = p.get('word_list_progress', '')
+            memory_verse_progress = p.get('memory_verse_progress', '')
+        else:
+            assignment_id = p[2] if len(p) > 2 else None
+            completed = p[5] if len(p) > 5 else False
+            word_list_progress = p[3] if len(p) > 3 else ''
+            memory_verse_progress = p[4] if len(p) > 4 else ''
+        if assignment_id:
+            progress_lookup[assignment_id] = {
+                'completed': completed,
+                'word_list_progress': word_list_progress,
+                'memory_verse_progress': memory_verse_progress
+            }
+    
+    # Display assignments
+    for assignment in assignments:
+        if isinstance(assignment, dict):
+            assignment_id = assignment.get('id')
+            title = assignment.get('title', 'N/A')
+            description = assignment.get('description', '')
+            due_date = assignment.get('due_date', 'N/A')
+            word_list = assignment.get('word_list', '')
+            memory_verse = assignment.get('memory_verse', '')
+        else:
+            assignment_id = assignment[0]
+            title = assignment[1] if len(assignment) > 1 else 'N/A'
+            description = assignment[2] if len(assignment) > 2 else ''
+            due_date = assignment[4] if len(assignment) > 4 else 'N/A'
+            word_list = assignment[5] if len(assignment) > 5 else ''
+            memory_verse = assignment[6] if len(assignment) > 6 else ''
+        
+        progress = progress_lookup.get(assignment_id, {})
+        completed = progress.get('completed', False)
+        
+        status_icon = "✅" if completed else "📝"
+        status_text = "Completed" if completed else "In Progress"
+        
+        with st.expander(f"{status_icon} {title} - {status_text}", expanded=not completed):
+            st.markdown(f"**Due Date:** {due_date}")
+            
+            if description:
+                st.markdown(f"**Description:**\n{description}")
+            
+            # Word list section
+            if word_list:
+                st.markdown("---")
+                st.markdown("**📚 Word List:**")
+                st.text(word_list)
+                
+                current_progress = progress.get('word_list_progress', '')
+                word_progress = st.text_area(
+                    "My Word List Progress",
+                    value=current_progress,
+                    help="Write your progress on the word list here",
+                    key=f"word_progress_{assignment_id}",
+                    height=100
+                )
+            
+            # Memory verse section
+            if memory_verse:
+                st.markdown("---")
+                st.markdown("**📖 Memory Verse:**")
+                st.text(memory_verse)
+                
+                current_verse_progress = progress.get('memory_verse_progress', '')
+                verse_progress = st.text_area(
+                    "My Memory Verse Progress",
+                    value=current_verse_progress,
+                    help="Write your progress on the memory verse here",
+                    key=f"verse_progress_{assignment_id}",
+                    height=100
+                )
+            
+            # Save progress button
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("💾 Save Progress", key=f"save_progress_{assignment_id}", type="primary"):
+                    conn = get_db_connection()
+                    progress_id = str(uuid.uuid4())
+                    
+                    if isinstance(conn, SupabaseAdapter):
+                        supabase_client = conn.client
+                        # Check if progress exists
+                        existing = supabase_client.table('student_progress').select('id').eq('student_id', student_id).eq('assignment_id', assignment_id).execute()
+                        
+                        progress_data = {
+                            'student_id': student_id,
+                            'assignment_id': assignment_id,
+                            'word_list_progress': word_progress if word_list else '',
+                            'memory_verse_progress': verse_progress if memory_verse else '',
+                            'completed': False
+                        }
+                        
+                        if existing.data:
+                            # Update existing
+                            supabase_client.table('student_progress').update(progress_data).eq('id', existing.data[0]['id']).execute()
+                        else:
+                            # Create new
+                            progress_data['id'] = progress_id
+                            supabase_client.table('student_progress').insert(progress_data).execute()
+                        conn.close()
+                    else:
+                        cursor = conn.cursor()
+                        # Check if progress exists
+                        cursor.execute('SELECT id FROM student_progress WHERE student_id = ? AND assignment_id = ?', (student_id, assignment_id))
+                        existing = cursor.fetchone()
+                        
+                        if existing:
+                            # Update existing
+                            cursor.execute('''
+                                UPDATE student_progress 
+                                SET word_list_progress = ?, memory_verse_progress = ?
+                                WHERE student_id = ? AND assignment_id = ?
+                            ''', (word_progress if word_list else '', verse_progress if memory_verse else '', student_id, assignment_id))
+                        else:
+                            # Create new
+                            cursor.execute('''
+                                INSERT INTO student_progress (id, student_id, assignment_id, word_list_progress, memory_verse_progress, completed)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (progress_id, student_id, assignment_id, word_progress if word_list else '', verse_progress if memory_verse else '', False))
+                        conn.commit()
+                        conn.close()
+                    
+                    st.success("✅ Progress saved!")
+                    st.rerun()
+            
+            with col2:
+                if st.button("✅ Mark as Completed", key=f"complete_{assignment_id}"):
+                    conn = get_db_connection()
+                    
+                    if isinstance(conn, SupabaseAdapter):
+                        supabase_client = conn.client
+                        # Check if progress exists
+                        existing = supabase_client.table('student_progress').select('id').eq('student_id', student_id).eq('assignment_id', assignment_id).execute()
+                        
+                        progress_data = {
+                            'student_id': student_id,
+                            'assignment_id': assignment_id,
+                            'completed': True,
+                            'submitted_at': datetime.now().isoformat()
+                        }
+                        
+                        if existing.data:
+                            # Update existing
+                            supabase_client.table('student_progress').update(progress_data).eq('id', existing.data[0]['id']).execute()
+                        else:
+                            # Create new
+                            progress_data['id'] = str(uuid.uuid4())
+                            supabase_client.table('student_progress').insert(progress_data).execute()
+                        conn.close()
+                    else:
+                        cursor = conn.cursor()
+                        # Check if progress exists
+                        cursor.execute('SELECT id FROM student_progress WHERE student_id = ? AND assignment_id = ?', (student_id, assignment_id))
+                        existing = cursor.fetchone()
+                        
+                        if existing:
+                            # Update existing
+                            cursor.execute('''
+                                UPDATE student_progress 
+                                SET completed = ?, submitted_at = ?
+                                WHERE student_id = ? AND assignment_id = ?
+                            ''', (True, datetime.now().isoformat(), student_id, assignment_id))
+                        else:
+                            # Create new
+                            progress_id = str(uuid.uuid4())
+                            cursor.execute('''
+                                INSERT INTO student_progress (id, student_id, assignment_id, completed, submitted_at)
+                                VALUES (?, ?, ?, ?, ?)
+                            ''', (progress_id, student_id, assignment_id, True, datetime.now().isoformat()))
+                        conn.commit()
+                        conn.close()
+                    
+                    st.success("🎉 Assignment marked as completed!")
+                    st.rerun()
 
 if __name__ == "__main__":
     main()

@@ -53,7 +53,9 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     phone TEXT,
     name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    parent_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_id) REFERENCES users (id)
 );
 
 -- Create newsletters table
@@ -167,7 +169,17 @@ CREATE POLICY "Enable all operations for user_activity" ON user_activity FOR ALL
 4. Click **Run** (or press Ctrl+Enter)
 5. You should see "Success. No rows returned"
 
-**Note:** If you get an error saying policies already exist, the script now includes `DROP POLICY IF EXISTS` statements that will handle this automatically. If you only need to add the `user_activity` table (and other tables already exist), you can run just this:
+**Note:** If you get an error saying policies already exist, the script now includes `DROP POLICY IF EXISTS` statements that will handle this automatically. 
+
+**For existing databases:** If your `users` table already exists and you need to add the `parent_id` column for student management, run this:
+
+```sql
+-- Add parent_id column to existing users table (for linking students to parents)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_id TEXT;
+ALTER TABLE users ADD CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES users(id);
+```
+
+If you only need to add the `user_activity` table (and other tables already exist), you can run just this:
 
 ```sql
 -- Create user_activity table (for tracking logins and user activity)

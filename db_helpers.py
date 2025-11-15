@@ -96,3 +96,4 @@ def db_delete(table_name, filters, conn=None):
         return cursor.rowcount
 
 
+
