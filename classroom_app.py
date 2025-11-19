@@ -3,7 +3,7 @@ import sqlite3
 import json
 from datetime import datetime, date
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import uuid
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -352,10 +352,14 @@ def send_newsletter_email(newsletter_data, recipient_emails, pdf_data=None):
             content_text += "PRACTICE AT HOME:\n" + newsletter_data['right_column'].get('practice_home', '') + "\n\n"
             content_text += "MEMORY VERSE:\n" + newsletter_data['right_column'].get('memory_verse', '') + "\n\n"
         
+        # Get teacher info for email signature
+        teacher_info = get_current_teacher_info()
+        teacher_name = teacher_info['name'] if teacher_info else "Your Teacher"
+        
         body = f"""
 Dear Parents and Students,
 
-Please find attached the latest classroom newsletter from Mrs. Simms' 2nd Grade Class.
+Please find attached the latest classroom newsletter from your 2nd Grade Class.
 
 Newsletter: {newsletter_data['title']}
 Date: {newsletter_data['date']}
@@ -363,7 +367,7 @@ Date: {newsletter_data['date']}
 {content_text}
 
 Best regards,
-Mrs. Simms
+{teacher_name}
 Washington Christian Academy
         """
         
@@ -503,16 +507,33 @@ To share with parents:
 
 For new accounts, contact the administrator who created your account."""
     
-    if any(word in user_message_lower for word in ['parent account', 'create parent', 'add parent']):
+    if any(word in user_message_lower for word in ['parent account', 'create parent', 'add parent', 'sign up', 'register']):
         if user_role == 'admin' or user_role == 'teacher':
             return """To create a parent account:
 1. Go to the "Parents" tab
 2. Click "Add New Parent Account"
 3. Fill in: Username, Email, Password, Name, Phone, Student Name
 4. Click "Create Parent Account"
-5. Share the credentials with the parent securely"""
+5. Share the credentials with the parent securely
+
+Alternatively, parents can create their own accounts using the Sign Up tab on the login page."""
+        elif user_role == 'parent':
+            return """You can create your own parent account:
+1. If you're not logged in, go to the login page
+2. Click on the "➕ Sign Up" tab in the sidebar
+3. Fill in: Username, Email, Password (confirm it), Name (optional), Phone (optional)
+4. Click "Create Account"
+5. Once created, switch to the "🔐 Login" tab to sign in
+
+Note: Make sure your username is unique and your password is at least 6 characters long."""
         else:
-            return "Only teachers and admins can create parent accounts. Please contact your teacher or administrator."
+            return """Parents can now create their own accounts! 
+1. Go to the login page
+2. Click on the "➕ Sign Up" tab in the sidebar
+3. Fill in your information and create your account
+4. Then login with your new credentials
+
+If you need help, please contact your teacher or administrator."""
     
     if any(word in user_message_lower for word in ['event', 'events', 'rsvp']):
         if user_role == 'teacher' or user_role == 'admin':
@@ -849,6 +870,55 @@ def db_count(conn, table, filters=None):
         result = cursor.fetchone()
         return result[0] if result else 0
 
+# Helper function to generate username suggestion from name
+def generate_username_suggestion(name: str) -> str:
+    """
+    Generate a username suggestion from a full name.
+    Format: first letter of first name + last name (lowercase, no spaces)
+    Example: "John Smith" -> "jsmith", "Mary Jane Doe" -> "mdoe"
+    """
+    if not name or not name.strip():
+        return ""
+    
+    # Split name into parts
+    name_parts = name.strip().split()
+    
+    if len(name_parts) == 0:
+        return ""
+    elif len(name_parts) == 1:
+        # Only one name provided, use first letter + the name
+        return name_parts[0][0].lower() + name_parts[0][1:].lower() if len(name_parts[0]) > 0 else ""
+    else:
+        # Multiple parts: first letter of first name + last name
+        first_initial = name_parts[0][0].lower() if len(name_parts[0]) > 0 else ""
+        last_name = name_parts[-1].lower()
+        # Remove any special characters from last name
+        last_name = ''.join(c for c in last_name if c.isalnum())
+        return first_initial + last_name if first_initial and last_name else ""
+
+# Helper function to get current teacher info
+def get_current_teacher_info():
+    """Get the current logged-in teacher's information"""
+    if 'user' not in st.session_state:
+        return None
+    
+    user = st.session_state.user
+    if user['role'] != 'teacher':
+        return None
+    
+    # Get teacher name - prefer stored name, then format from username/email
+    teacher_name = user.get('name', '')
+    if not teacher_name:
+        # Try to format from username
+        teacher_name = user['username'].replace('.', ' ').replace('_', ' ').title()
+    
+    return {
+        'name': teacher_name,
+        'email': user.get('email', ''),
+        'phone': user.get('phone', ''),
+        'username': user['username']
+    }
+
 # Authentication
 def authenticate_user(username: str, password: str) -> Optional[Dict]:
     conn = get_db_connection()
@@ -894,6 +964,98 @@ def authenticate_user(username: str, password: str) -> Optional[Dict]:
                 'name': name_value
             }
         return None
+
+def register_parent(username: str, password: str, email: str, name: str = "", phone: str = "") -> Tuple[bool, str]:
+    """
+    Register a new parent account.
+    Returns: (success: bool, message: str)
+    """
+    # Validation
+    if not username or not username.strip():
+        return False, "Username is required."
+    
+    if not password or len(password) < 6:
+        return False, "Password must be at least 6 characters long."
+    
+    if not email or not email.strip():
+        return False, "Email address is required."
+    
+    # Basic email validation
+    if "@" not in email or "." not in email.split("@")[1]:
+        return False, "Please enter a valid email address."
+    
+    # Check for existing username
+    conn = get_db_connection()
+    
+    try:
+        if isinstance(conn, SupabaseAdapter):
+            supabase_client = conn.client
+            
+            # Check if username already exists
+            existing_result = supabase_client.table('users').select('*').eq('username', username.strip()).execute()
+            
+            if existing_result.data and len(existing_result.data) > 0:
+                conn.close()
+                return False, f"Username '{username}' is already taken. Please choose a different username."
+            
+            # Check if email already exists
+            email_result = supabase_client.table('users').select('*').eq('email', email.strip()).execute()
+            
+            if email_result.data and len(email_result.data) > 0:
+                conn.close()
+                return False, f"An account with this email address already exists. Please use a different email or contact support."
+            
+            # Create parent account
+            parent_id = str(uuid.uuid4())
+            parent_data = {
+                'id': parent_id,
+                'username': username.strip(),
+                'password': password,
+                'role': 'parent',
+                'email': email.strip(),
+                'phone': phone.strip() if phone else '',
+                'name': name.strip() if name else ''
+            }
+            
+            supabase_client.table('users').insert(parent_data).execute()
+            conn.close()
+            return True, f"Account created successfully! You can now login with your username and password."
+            
+        else:
+            # SQLite
+            cursor = conn.cursor()
+            
+            # Check if username already exists
+            cursor.execute('SELECT * FROM users WHERE username = ?', (username.strip(),))
+            existing = cursor.fetchone()
+            
+            if existing:
+                conn.close()
+                return False, f"Username '{username}' is already taken. Please choose a different username."
+            
+            # Check if email already exists
+            cursor.execute('SELECT * FROM users WHERE email = ?', (email.strip(),))
+            email_existing = cursor.fetchone()
+            
+            if email_existing:
+                conn.close()
+                return False, f"An account with this email address already exists. Please use a different email or contact support."
+            
+            # Create parent account
+            parent_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO users (id, username, password, role, email, phone, name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (parent_id, username.strip(), password, 'parent', email.strip(), phone.strip() if phone else '', name.strip() if name else ''))
+            
+            conn.commit()
+            conn.close()
+            return True, f"Account created successfully! You can now login with your username and password."
+            
+    except Exception as e:
+        if conn:
+            conn.close()
+        return False, f"Error creating account: {str(e)}"
 
 def log_user_activity(user_id: str, username: str, role: str, activity_type: str = "login"):
     """Log user activity (login, logout, etc.) to the database"""
@@ -980,14 +1142,15 @@ def create_default_users():
         user_count = count_result.count if hasattr(count_result, 'count') else len(count_result.data) if count_result.data else 0
         
         if user_count == 0:
-            # Create default teacher
+            # Create default teacher account (teachers can create their own or admin can add more)
             supabase_client.table('users').insert({
                 'id': str(uuid.uuid4()),
-                'username': 'mrs.simms',
+                'username': 'teacher1',
                 'password': 'password123',
                 'role': 'teacher',
-                'email': 'Ksimms@washingtonchristian.org',
-                'phone': '240-390-0429'
+                'email': 'teacher@washingtonchristian.org',
+                'phone': '',
+                'name': 'Teacher'
             }).execute()
             
             # Create sample parents
@@ -1022,11 +1185,11 @@ def create_default_users():
         count = cursor.fetchone()[0]
         
         if count == 0:
-            # Create default teacher
+            # Create default teacher account (teachers can create their own or admin can add more)
             cursor.execute('''
-                INSERT INTO users (id, username, password, role, email, phone)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (str(uuid.uuid4()), 'mrs.simms', 'password123', 'teacher', 'Ksimms@washingtonchristian.org', '240-390-0429'))
+                INSERT INTO users (id, username, password, role, email, phone, name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (str(uuid.uuid4()), 'teacher1', 'password123', 'teacher', 'teacher@washingtonchristian.org', '', 'Teacher'))
             
             # Create sample parents
             parents = [
@@ -1057,11 +1220,17 @@ def create_sample_newsletter():
         
         # Also check if we've already created a sample newsletter in this session
         if count == 0 and not st.session_state.get('sample_newsletter_created', False):
-            # Get teacher ID
-            teacher_result = supabase_client.table('users').select('id').eq('username', 'mrs.simms').execute()
-            teacher_data = teacher_result.data[0] if teacher_result.data else None
+            # Get first available teacher ID (or current logged-in teacher)
+            teacher_id = None
+            if 'user' in st.session_state and st.session_state.user['role'] == 'teacher':
+                teacher_id = st.session_state.user['id']
+            else:
+                # Get first teacher from database
+                teacher_result = supabase_client.table('users').select('id').eq('role', 'teacher').limit(1).execute()
+                if teacher_result.data and len(teacher_result.data) > 0:
+                    teacher_id = teacher_result.data[0]['id']
             
-            if teacher_data:
+            if teacher_id:
                 sample_content = {
                     'title': 'OUR CLASSROOM newsletter',
                     'date': 'October 03, 2025',
@@ -1100,7 +1269,7 @@ should why what''',
                     'title': sample_content['title'],
                     'content': json.dumps(sample_content),
                     'date': '2025-10-03',
-                    'teacher_id': teacher_data['id']
+                    'teacher_id': teacher_id
                 }
                 
                 supabase_client.table('newsletters').insert(newsletter_data).execute()
@@ -1117,11 +1286,18 @@ should why what''',
         
         # Also check if we've already created a sample newsletter in this session
         if count == 0 and not st.session_state.get('sample_newsletter_created', False):
-            # Get teacher ID
-            cursor.execute('SELECT id FROM users WHERE username = ?', ('mrs.simms',))
-            teacher = cursor.fetchone()
+            # Get first available teacher ID (or current logged-in teacher)
+            teacher_id = None
+            if 'user' in st.session_state and st.session_state.user['role'] == 'teacher':
+                teacher_id = st.session_state.user['id']
+            else:
+                # Get first teacher from database
+                cursor.execute('SELECT id FROM users WHERE role = ? LIMIT 1', ('teacher',))
+                teacher = cursor.fetchone()
+                if teacher:
+                    teacher_id = teacher[0]
             
-            if teacher:
+            if teacher_id:
                 sample_content = {
                     'title': 'OUR CLASSROOM newsletter',
                     'date': 'October 03, 2025',
@@ -1159,7 +1335,7 @@ should why what''',
                     INSERT INTO newsletters (id, title, content, date, teacher_id)
                     VALUES (?, ?, ?, ?, ?)
                 ''', (str(uuid.uuid4()), sample_content['title'], json.dumps(sample_content), 
-                      '2025-10-03', teacher[0]))
+                      '2025-10-03', teacher_id))
                 
                 st.session_state.sample_newsletter_created = True
         
@@ -1273,13 +1449,20 @@ def generate_newsletter_pdf(newsletter_data):
         story.append(Paragraph(newsletter_data.get('date', ''), date_style))
         story.append(Spacer(1, 20))
         
-        # Teacher info
-        teacher_info = """
-        <b>MRS. SIMMS</b><br/>
-        Ksimms@washingtonchristian.org<br/>
-        240-390-0429
-        """
-        story.append(Paragraph(teacher_info, teacher_style))
+        # Teacher info - get from current logged-in teacher
+        teacher_info_obj = get_current_teacher_info()
+        if teacher_info_obj:
+            teacher_name = teacher_info_obj['name'].upper() if teacher_info_obj['name'] else teacher_info_obj['username'].replace('.', ' ').replace('_', ' ').upper()
+            teacher_email = teacher_info_obj['email'] or ''
+            teacher_phone = teacher_info_obj['phone'] or ''
+            
+            teacher_info_html = f"<b>{teacher_name}</b><br/>"
+            if teacher_email:
+                teacher_info_html += f"{teacher_email}<br/>"
+            if teacher_phone:
+                teacher_info_html += f"{teacher_phone}"
+            
+            story.append(Paragraph(teacher_info_html, teacher_style))
         story.append(Spacer(1, 20))
         
         
@@ -1366,27 +1549,100 @@ create_default_users()
 # Main app
 def main():
     st.title("🏫 WCA Classroom Manager")
-    st.markdown("**Washington Christian Academy - Mrs. Simms' 2nd Grade Class**")
+    st.markdown("**Washington Christian Academy - 2nd Grade Classrooms**")
     
     # Sidebar for authentication
     if 'user' not in st.session_state:
-        st.sidebar.title("Login")
-        username = st.sidebar.text_input("Username")
-        password = st.sidebar.text_input("Password", type="password")
+        # Create tabs for Login and Sign Up
+        auth_tab1, auth_tab2 = st.sidebar.tabs(["🔐 Login", "➕ Sign Up"])
         
-        if st.sidebar.button("Login"):
-            user = authenticate_user(username, password)
-            if user:
-                # Log user login activity
-                log_user_activity(user['id'], user['username'], user['role'], "login")
-                st.session_state.user = user
-                st.sidebar.success(f"Logged in as {user['role']}: {user['username']}")
-                st.rerun()
-            else:
-                st.sidebar.error("Invalid credentials. Please check your username and password.")
+        # Login Tab
+        with auth_tab1:
+            st.title("Login")
+            username = st.text_input("Username", key="login_username")
+            password = st.text_input("Password", type="password", key="login_password")
+            
+            if st.button("Login", key="login_btn", use_container_width=True):
+                user = authenticate_user(username, password)
+                if user:
+                    # Log user login activity
+                    log_user_activity(user['id'], user['username'], user['role'], "login")
+                    st.session_state.user = user
+                    st.success(f"Logged in as {user['role']}: {user['username']}")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials. Please check your username and password.")
+        
+        # Sign Up Tab (for parents)
+        with auth_tab2:
+            st.title("Create Parent Account")
+            st.markdown("**Parents can create their own account here**")
+            
+            signup_name = st.text_input(
+                "Full Name",
+                help="Your full name (optional)",
+                key="signup_name"
+            )
+            
+            # Generate username suggestion from name
+            username_suggestion = ""
+            if signup_name and signup_name.strip():
+                username_suggestion = generate_username_suggestion(signup_name)
+            
+            # Show username suggestion if available
+            if username_suggestion:
+                st.info(f"💡 Suggested username: **{username_suggestion}** (first letter of first name + last name)")
+            
+            signup_username = st.text_input(
+                "Username *",
+                help="Choose a unique username. Suggestion: first letter of first name + last name (e.g., 'jsmith' for John Smith)",
+                placeholder=username_suggestion if username_suggestion else "e.g., jsmith",
+                key="signup_username"
+            )
+            signup_email = st.text_input(
+                "Email Address *",
+                help="Your email address for newsletters and communication",
+                key="signup_email"
+            )
+            signup_password = st.text_input(
+                "Password *",
+                type="password",
+                help="Must be at least 6 characters long",
+                key="signup_password"
+            )
+            signup_password_confirm = st.text_input(
+                "Confirm Password *",
+                type="password",
+                key="signup_password_confirm"
+            )
+            signup_phone = st.text_input(
+                "Phone Number",
+                help="Contact phone number (optional)",
+                key="signup_phone"
+            )
+            
+            if st.button("Create Account", type="primary", key="signup_btn", use_container_width=True):
+                # Validation
+                if not signup_username or not signup_email or not signup_password:
+                    st.error("Please fill in all required fields (marked with *).")
+                elif signup_password != signup_password_confirm:
+                    st.error("Passwords do not match. Please try again.")
+                else:
+                    success, message = register_parent(
+                        signup_username,
+                        signup_password,
+                        signup_email,
+                        signup_name,
+                        signup_phone
+                    )
+                    if success:
+                        st.success(message)
+                        st.info("You can now switch to the Login tab to sign in.")
+                    else:
+                        st.error(message)
         
         st.sidebar.markdown("---")
-        st.sidebar.info("💡 Contact your administrator for login credentials")
+        st.sidebar.info("💡 Parents can create their own account using the Sign Up tab")
         
         # NM2Tech branding in sidebar
         st.sidebar.markdown("---")
@@ -1401,7 +1657,7 @@ def main():
         """, unsafe_allow_html=True)
         
         # Show welcome message
-        st.info("👋 Welcome! Please login to access the classroom management system.")
+        st.info("👋 Welcome! Please login to access the classroom management system. Parents can create their own account using the Sign Up tab in the sidebar.")
         
         # Footer at the bottom of login page
         st.markdown("---")
@@ -1474,10 +1730,10 @@ def main():
         st.sidebar.success(welcome_message)
         st.sidebar.info("👨‍👩‍👧‍👦 Parent Access")
     elif user['role'] == 'teacher':
-        # For teachers, use their username or email name
-        email = user.get('email', '')
-        if email and 'simms' in email.lower():
-            st.sidebar.success("Welcome, Mrs. Simms!")
+        # For teachers, use their stored name or format from username
+        teacher_name = user.get('name', '')
+        if teacher_name:
+            st.sidebar.success(f"Welcome, {teacher_name}!")
         else:
             username = user['username'].replace('.', ' ').replace('_', ' ').title()
             st.sidebar.success(f"Welcome, {username}!")
@@ -2112,22 +2368,29 @@ def newsletter_management():
                 </div>
                 """, unsafe_allow_html=True)
                 
-            # Teacher Info Box
-            st.markdown("""
-            <div style="background-color: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: right;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="font-size: 0.9em; color: #7f8c8d;">
-                        📚📖📕<br>
-                        MRS. SIMMS<br>
-                        Ksimms@washingtonchristian.org<br>
-                        240-390-0429
-                    </div>
-                    <div style="font-size: 1.1em; font-weight: bold; color: #2c3e50;">
-                        MRS. SIMMS
+            # Teacher Info Box - get from current logged-in teacher
+            teacher_info_obj = get_current_teacher_info()
+            if teacher_info_obj:
+                teacher_name = teacher_info_obj['name'] if teacher_info_obj['name'] else teacher_info_obj['username'].replace('.', ' ').replace('_', ' ').title()
+                teacher_email = teacher_info_obj['email'] or ''
+                teacher_phone = teacher_info_obj['phone'] or ''
+                
+                teacher_info_html = f"""
+                <div style="background-color: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: right;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 0.9em; color: #7f8c8d;">
+                            📚📖📕<br>
+                            {teacher_name.upper()}<br>
+                            {teacher_email}<br>
+                            {teacher_phone}
+                        </div>
+                        <div style="font-size: 1.1em; font-weight: bold; color: #2c3e50;">
+                            {teacher_name.upper()}
+                        </div>
                     </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """
+                st.markdown(teacher_info_html, unsafe_allow_html=True)
             
             # Two Column Layout
             col1, col2 = st.columns(2, gap="large")
@@ -3005,7 +3268,7 @@ def parent_user_management():
         with col1:
             parent_username = st.text_input(
                 "Parent Username",
-                help="Choose a unique username for the parent (e.g., 'smith.family' or 'john.smith')",
+                help="Choose a unique username. Suggestion: first letter of first name + last name (e.g., 'jsmith' for John Smith)",
                 key="new_parent_username"
             )
             parent_email = st.text_input(
@@ -3023,9 +3286,15 @@ def parent_user_management():
         with col2:
             parent_name = st.text_input(
                 "Parent Name",
-                help="Full name (e.g., 'John and Jane Smith')",
+                help="Full name (e.g., 'John and Jane Smith' or 'John Smith')",
                 key="new_parent_name"
             )
+            
+            # Generate username suggestion from parent name
+            parent_username_suggestion = ""
+            if parent_name and parent_name.strip():
+                parent_username_suggestion = generate_username_suggestion(parent_name)
+            
             parent_phone = st.text_input(
                 "Phone Number",
                 help="Contact phone number (optional)",
@@ -3036,6 +3305,13 @@ def parent_user_management():
                 help="Name of the parent's child in your class",
                 key="new_parent_student_name"
             )
+        
+        # Show username suggestion if parent name is entered
+        if parent_username_suggestion:
+            st.info(f"💡 Suggested username for '{parent_name}': **{parent_username_suggestion}** (first letter of first name + last name)")
+            if st.button(f"Use suggested username: {parent_username_suggestion}", key="use_suggested_parent_username"):
+                st.session_state.new_parent_username = parent_username_suggestion
+                st.rerun()
         
         if st.button("➕ Create Parent Account", type="primary", key="create_parent_btn"):
             if not parent_username or not parent_password or not parent_email:
@@ -3505,7 +3781,7 @@ def admin_teacher_management():
         with col1:
             teacher_username = st.text_input(
                 "Teacher Username",
-                help="Choose a unique username (e.g., 'mrs.simms', 'mr.jones')",
+                help="Choose a unique username. Suggestion: first letter of first name + last name (e.g., 'jsmith' for John Smith)",
                 key="new_teacher_username"
             )
             teacher_email = st.text_input(
@@ -3523,14 +3799,27 @@ def admin_teacher_management():
         with col2:
             teacher_name = st.text_input(
                 "Teacher Name",
-                help="Full name (e.g., 'Mrs. Simms')",
+                help="Full name (e.g., 'Mrs. Simms' or 'John Smith')",
                 key="new_teacher_name"
             )
+            
+            # Generate username suggestion from teacher name
+            teacher_username_suggestion = ""
+            if teacher_name and teacher_name.strip():
+                teacher_username_suggestion = generate_username_suggestion(teacher_name)
+            
             teacher_phone = st.text_input(
                 "Phone Number",
                 help="Contact phone number",
                 key="new_teacher_phone"
             )
+        
+        # Show username suggestion if teacher name is entered
+        if teacher_username_suggestion:
+            st.info(f"💡 Suggested username for '{teacher_name}': **{teacher_username_suggestion}** (first letter of first name + last name)")
+            if st.button(f"Use suggested username: {teacher_username_suggestion}", key="use_suggested_teacher_username"):
+                st.session_state.new_teacher_username = teacher_username_suggestion
+                st.rerun()
         
         if st.button("➕ Create Teacher Account", type="primary", key="create_teacher_btn"):
             if not teacher_username or not teacher_password or not teacher_email:
@@ -4140,22 +4429,29 @@ def view_newsletter():
         </div>
         """, unsafe_allow_html=True)
         
-        # Teacher Info Box
-        st.markdown("""
-        <div style="background-color: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: right;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-size: 0.9em; color: #7f8c8d;">
-                    📚📖📕<br>
-                    MRS. SIMMS<br>
-                    Ksimms@washingtonchristian.org<br>
-                    240-390-0429
-                </div>
-                <div style="font-size: 1.1em; font-weight: bold; color: #2c3e50;">
-                    MRS. SIMMS
+        # Teacher Info Box - get from current logged-in teacher
+        teacher_info_obj = get_current_teacher_info()
+        if teacher_info_obj:
+            teacher_name = teacher_info_obj['name'] if teacher_info_obj['name'] else teacher_info_obj['username'].replace('.', ' ').replace('_', ' ').title()
+            teacher_email = teacher_info_obj['email'] or ''
+            teacher_phone = teacher_info_obj['phone'] or ''
+            
+            teacher_info_html = f"""
+            <div style="background-color: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: right;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-size: 0.9em; color: #7f8c8d;">
+                        📚📖📕<br>
+                        {teacher_name.upper()}<br>
+                        {teacher_email}<br>
+                        {teacher_phone}
+                    </div>
+                    <div style="font-size: 1.1em; font-weight: bold; color: #2c3e50;">
+                        {teacher_name.upper()}
+                    </div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """
+            st.markdown(teacher_info_html, unsafe_allow_html=True)
         
         # Two Column Layout
         col1, col2 = st.columns(2, gap="large")
